@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+{% if onboarding %}
+<div class="card">
+  <h1>С чего начать</h1>
+  <ol class="steps">
+  {% for st in steps %}
+    <li class="{{ 'done' if st.done }}">{% if st.done %}✅ {{ st.text }}{% else %}<a href="{{ st.url }}">{{ st.text }}</a>{% endif %}</li>
+  {% endfor %}
+  </ol>
+  <p class="muted">Вакансию можно разобрать и без поиска: вставьте ссылку или текст на странице <a href="/vacancies">Вакансии</a>.</p>
+</div>
+{% endif %}
+
+{% if running %}
+<div class="card">
+  <h2>Выполняется</h2>
+  <ul>{% for j in running %}<li><a href="/jobs/{{ j.id }}">{{ j.title or j.kind }}</a> <span class="spinner"></span></li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+{% if due %}
+<div class="card">
+  <h2>Пора действовать</h2>
+  <ul>{% for uv in due %}{% set v = uv.vacancy %}
+    <li><a href="/vacancies/{{ v.id }}">{{ v.title }}</a> <span class="muted">{{ v.company or "" }} — {{ uv.next_action_note or "следующий шаг" }}</span></li>
+  {% endfor %}</ul>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Лучшие совпадения</h2>
+  {% if matches %}
+  <table>
+    {% for v, a in matches %}
+    <tr>
+      <td><a href="/analyses/{{ a.id }}"><span class="score {{ a.score|score_class }}">{{ a.score|int }}</span></a></td>
+      <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a><div class="muted">{{ v.company or "" }} · {{ v|money }}</div>
+          <div class="muted">{{ (a.output or {}).get("summary", "") }}</div></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">Пока нет оценённых вакансий. {% if not onboarding %}Запустите <a href="/searches">поиск</a>.{% endif %}</p>
+  {% endif %}
+</div>
+{% endblock %}

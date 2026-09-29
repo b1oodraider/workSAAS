@@ -166,8 +166,8 @@ def test_web_flow(user_id, env):
         r = client.get(f"/jobs/{job_id}")
         assert "/analyses/" in str(r.url) and "Скопировать" in r.text
 
-        for page in ("/resumes", f"/resumes/{resume_id}", "/vacancies", f"/vacancies/{vacancy_id}",
-                     "/searches", "/jobs", "/usage"):
+        for page in ("/", "/resumes", f"/resumes/{resume_id}", "/vacancies", f"/vacancies/{vacancy_id}",
+                     "/searches", "/jobs", "/usage", "/tracker", "/settings", "/admin"):
             assert client.get(page).status_code == 200, page
 
         # Another user's objects are invisible.
