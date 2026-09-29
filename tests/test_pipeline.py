@@ -178,7 +178,7 @@ def test_web_flow(user_id, env):
 async def test_url_import_blocks_internal_addresses(url):
     from app.jobs.queue import JobError
 
-    with pytest.raises(JobError, match="внутренние"):
+    with pytest.raises(JobError, match="внутренние|порты"):
         await vacancy_svc.draft_from_url(url)
 
 
@@ -227,3 +227,16 @@ async def test_search_merges_cross_source_duplicates(user_id, resume_id, monkeyp
                                       queries=[], filters={}).id
     result = await search_svc.run_search(user_id, search_id)
     assert result["unique"] == 1 and result["duplicates"] == 1 and result["llm_match_enqueued"] == 1
+
+
+def test_login_is_throttled(user_id):
+    from app.main import create_app
+    from app.web.routes.auth import throttle
+
+    throttle._failures.clear()
+    with TestClient(create_app(start_background=False)) as client:
+        for _ in range(5):
+            client.post("/login", data={"username": "alice", "password": "bad"})
+        r = client.post("/login", data={"username": "alice", "password": "password123"})
+        assert "Слишком много попыток" in r.text
+    throttle._failures.clear()

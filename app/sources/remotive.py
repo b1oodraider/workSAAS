@@ -10,7 +10,7 @@ import re
 from typing import Any
 
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, VacancyDraft
+from app.sources.base import JobSource, SearchQuery, VacancyDraft, safe_map
 from app.sources.jsonld import parse_date
 from app.sources.web import fetch_json
 
@@ -66,6 +66,7 @@ class RemotiveSource(JobSource):
 
     async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]:
         data = await fetch_json(API, params={"search": query.text, "limit": limit},
-                                use_proxy=self.cfg.use_proxy, source=self.title, min_interval=2.0)
+                                use_proxy=self.cfg.use_proxy, source=self.title, min_interval=2.0,
+                                cache_ttl=3600)
         jobs = data.get("jobs") if isinstance(data, dict) else None
-        return [d for d in (item_to_draft(j) for j in jobs or [] if isinstance(j, dict)) if d][:limit]
+        return safe_map(item_to_draft, jobs or [], source=self.title)[:limit]

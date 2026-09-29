@@ -22,8 +22,8 @@ import httpx
 from app.core.http import make_async_client
 from app.core.text import html_to_text
 from app.sources import hh_web
-from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft
-from app.sources.web import make_fetcher
+from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, as_dict, safe_map
+from app.sources.web import make_fetcher, rate_limiter
 
 log = logging.getLogger(__name__)
 
@@ -57,8 +57,8 @@ def _is_remote(item: dict[str, Any]) -> bool | None:
 
 
 def item_to_draft(item: dict[str, Any], *, full: bool) -> VacancyDraft:
-    salary = item.get("salary") or item.get("salary_range") or {}
-    snippet = item.get("snippet") or {}
+    salary = as_dict(item.get("salary") or item.get("salary_range"))
+    snippet = as_dict(item.get("snippet"))
     if full:
         description = html_to_text(item.get("description"))
     else:
@@ -146,6 +146,7 @@ class HHSource(JobSource):
         return make_async_client(use_proxy=self.cfg.use_proxy, timeout=30.0, headers=headers)
 
     async def _get(self, client: httpx.AsyncClient, path: str, params: Any = None) -> dict[str, Any]:
+        await rate_limiter.wait("api.hh.ru", float(self.cfg.options.get("api_min_interval", 0.5)))
         try:
             resp = await client.get(API + path, params=params)
         except httpx.HTTPError as exc:
@@ -156,7 +157,12 @@ class HHSource(JobSource):
             raise ApiDenied(f"API hh.ru отказал в доступе ({resp.status_code})")
         if resp.status_code >= 400:
             raise SourceError(f"hh.ru ответил {resp.status_code}: {resp.text[:300]}")
-        return resp.json()
+        try:
+            data = resp.json()
+        except ValueError:
+            # An anti-bot HTML page with status 200: treat like a refusal (auto mode -> website).
+            raise ApiDenied("API hh.ru вернул не JSON") from None
+        return data if isinstance(data, dict) else {}
 
     def _area(self, query: SearchQuery) -> str:
         return query.filters.area or str(self.cfg.options.get("area", ""))
@@ -171,7 +177,7 @@ class HHSource(JobSource):
         if self._area(query):
             params.append(("area", self._area(query)))
         if f.period_days:
-            params.append(("period", f.period_days))
+            params.append(("period", min(f.period_days, 30)))
         if f.salary_min:
             params.append(("salary", f.salary_min))
         if f.experience:
@@ -183,7 +189,7 @@ class HHSource(JobSource):
             while len(drafts) < limit:
                 data = await self._get(client, "/vacancies", params + [("page", page)])
                 items = data.get("items") or []
-                drafts.extend(item_to_draft(i, full=False) for i in items)
+                drafts.extend(safe_map(lambda i: item_to_draft(i, full=False), items, source="hh"))
                 page += 1
                 if not items or page >= int(data.get("pages") or 0):
                     break
@@ -192,7 +198,10 @@ class HHSource(JobSource):
     async def _api_fetch(self, external_id: str) -> VacancyDraft | None:
         async with self._client() as client:
             data = await self._get(client, f"/vacancies/{external_id}")
-        return item_to_draft(data, full=True) if data else None
+        if not data:
+            return None
+        found = safe_map(lambda i: item_to_draft(i, full=True), [data], source="hh")
+        return found[0] if found else None
 
     # --- website --------------------------------------------------------------
 

@@ -11,11 +11,11 @@ Options:
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft
+from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, as_dict, safe_map
 from app.sources.web import fetch_json
 
 API = "https://api.superjob.ru/2.0/vacancies/"
@@ -24,9 +24,9 @@ API = "https://api.superjob.ru/2.0/vacancies/"
 def item_to_draft(item: dict[str, Any]) -> VacancyDraft | None:
     if not item.get("id") or not item.get("profession"):
         return None
-    town = item.get("town") or {}
-    place = item.get("place_of_work") or {}
-    experience = item.get("experience") or {}
+    town = as_dict(item.get("town"))
+    place = as_dict(item.get("place_of_work"))
+    experience = as_dict(item.get("experience"))
     ts = item.get("date_published")
     currency = (item.get("currency") or "").upper()
     return VacancyDraft(
@@ -42,7 +42,8 @@ def item_to_draft(item: dict[str, Any]) -> VacancyDraft | None:
         remote=True if "удал" in str(place.get("title", "")).lower() else None,
         experience=experience.get("title") if isinstance(experience, dict) else None,
         description=html_to_text(item.get("vacancyRichText") or item.get("candidat") or ""),
-        published_at=datetime.fromtimestamp(ts) if isinstance(ts, (int, float)) else None,
+        published_at=(datetime.fromtimestamp(ts, timezone.utc).replace(tzinfo=None)
+                      if isinstance(ts, (int, float)) else None),
     )
 
 
@@ -72,4 +73,4 @@ class SuperJobSource(JobSource):
         data = await fetch_json(API, params=params, use_proxy=self.cfg.use_proxy, source=self.title,
                                 headers={"X-Api-App-Id": self._key()})
         objects = data.get("objects") if isinstance(data, dict) else None
-        return [d for d in (item_to_draft(o) for o in objects or [] if isinstance(o, dict)) if d][:limit]
+        return safe_map(item_to_draft, objects or [], source=self.title)[:limit]

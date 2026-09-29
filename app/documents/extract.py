@@ -6,6 +6,9 @@ import io
 from pathlib import PurePath
 
 
+MAX_PDF_PAGES = 15
+
+
 class ExtractError(Exception):
     pass
 
@@ -33,7 +36,11 @@ def _pdf(data: bytes) -> str:
 
     try:
         reader = PdfReader(io.BytesIO(data))
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise ExtractError(f"В PDF больше {MAX_PDF_PAGES} страниц — это точно резюме?")
         return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except ExtractError:
+        raise
     except Exception as exc:  # noqa: BLE001 - pypdf raises many exception types
         raise ExtractError(f"Не удалось прочитать PDF: {exc}") from exc
 

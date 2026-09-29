@@ -12,6 +12,7 @@ Options:
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime
 from typing import Any
@@ -19,10 +20,12 @@ from typing import Any
 from bs4 import BeautifulSoup, Tag
 
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, VacancyDraft, matches_query
+from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, matches_query, safe_map
 from app.sources.hh_web import parse_salary_text
 from app.sources.jsonld import parse_date
 from app.sources.web import make_fetcher
+
+log = logging.getLogger(__name__)
 
 _POSITIVE = (
     "ваканси", "#vacancy", "#job", "#hiring", "ищем ", "в команду", "требования", "обязанности",
@@ -31,9 +34,10 @@ _POSITIVE = (
     "responsibilities", "requirements", "salary",
 )
 _NEGATIVE = (
-    "#резюме", "#resume", "#cv", "ищу работу", "#ищуработу", "#реклама", "erid", "#ad ",
+    "#резюме", "#resume", "#cv", "ищу работу", "#ищуработу", "#реклама", "#ad ",
     "розыгрыш", "подписывайтесь", "вебинар", "курс со скидкой",
 )
+_ERID_RE = re.compile(r"\berid\b")  # ad marking required by Russian law
 _HASHTAG_RE = re.compile(r"#[\w\d_]+")
 _EMOJI_RE = re.compile(r"[\U0001F000-\U0001FAFF☀-➿️]")
 _COMPANY_RE = re.compile(r"(?:компания|company|работодатель)\s*[:—-]\s*(.+)", re.I)
@@ -44,7 +48,7 @@ def is_vacancy_post(text: str) -> bool:
     low = text.lower()
     if len(low) < 120:
         return False
-    if any(n in low for n in _NEGATIVE):
+    if any(n in low for n in _NEGATIVE) or _ERID_RE.search(low):
         return False
     return sum(1 for p in _POSITIVE if p in low) >= 3
 
@@ -98,8 +102,8 @@ def parse_channel_page(html: str, channel: str) -> tuple[list[VacancyDraft], str
         if not is_vacancy_post(text):
             continue
         time_el = msg.select_one("time[datetime]")
-        drafts.append(post_to_draft(channel, post_id, text,
-                                    str(time_el["datetime"]) if time_el else None))
+        published = str(time_el["datetime"]) if time_el else None
+        drafts += safe_map(lambda t: post_to_draft(channel, post_id, t, published), [text], source="telegram")
     return drafts, (str(min_id) if min_id is not None else None)
 
 
@@ -118,25 +122,24 @@ class TelegramChannelsSource(JobSource):
         if not channels:
             return []
         pages = int(self.cfg.options.get("pages", 2))
-        fetcher = make_fetcher("http", use_proxy=self.cfg.use_proxy,
+        # Pages are cached for 10 minutes: a search run asks the same channels for every query.
+        fetcher = make_fetcher("http", use_proxy=self.cfg.use_proxy, cache_ttl=600,
                                min_interval=float(self.cfg.options.get("min_interval", 2.0)))
         drafts: dict[str, VacancyDraft] = {}
+        failed: list[str] = []
         try:
             for channel in channels:
-                before: str | None = None
-                for _ in range(pages):
-                    params = {"before": before} if before else None
-                    page = await fetcher.get(f"https://t.me/s/{channel}", params)
-                    if page.status >= 400:
-                        break
-                    found, before = parse_channel_page(page.text, channel)
-                    for d in found:
+                try:
+                    for d in await self._read_channel(fetcher, channel, pages):
                         if matches_query(f"{d.title}\n{d.description}", query.text):
                             drafts.setdefault(d.external_id, d)
-                    if not before:
-                        break
+                except SourceError as exc:
+                    log.warning("telegram channel %s: %s", channel, exc)
+                    failed.append(channel)
         finally:
             await fetcher.close()
+        if failed and len(failed) == len(channels):
+            raise SourceError("t.me недоступен или ограничил запросы")
         result = sorted(drafts.values(), key=lambda d: d.published_at or datetime.min, reverse=True)
         return result[:limit]
 
@@ -157,6 +160,21 @@ class TelegramChannelsSource(JobSource):
         time_el = soup.select_one("time[datetime]")
         return post_to_draft(channel, post_id, html_to_text(str(body)),
                              str(time_el["datetime"]) if time_el else None)
+
+    async def _read_channel(self, fetcher, channel: str, pages: int) -> list[VacancyDraft]:
+        found: list[VacancyDraft] = []
+        before: str | None = None
+        for _ in range(pages):
+            page = await fetcher.get(f"https://t.me/s/{channel}", {"before": before} if before else None)
+            if page.status == 429:
+                raise SourceError("t.me ограничил частоту запросов (429)")
+            if page.status >= 400:
+                break
+            items, before = parse_channel_page(page.text, channel)
+            found += items
+            if not before:
+                break
+        return found
 
     def external_id_from_url(self, url: str) -> str | None:
         m = re.search(r"t\.me/(?:s/)?([A-Za-z0-9_]{4,})/(\d+)", url)

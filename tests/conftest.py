@@ -15,6 +15,7 @@ from app.llm.gateway import LLMGateway, set_gateway  # noqa: E402
 from app.llm.providers.fake import FakeProvider  # noqa: E402
 from app.models import User  # noqa: E402
 from app.plugins import load_all  # noqa: E402
+from app.sources.web import response_cache  # noqa: E402
 
 load_all()
 
@@ -34,6 +35,7 @@ def env(tmp_path):
     settings.default_monthly_budget_usd = 0
     settings.telegram.bot_token = None  # never talk to the real Telegram from tests
     set_api(None)
+    response_cache.clear()
     init_engine(f"sqlite:///{tmp_path / 'test.db'}")
     create_all()
     FakeProvider.canned.clear()

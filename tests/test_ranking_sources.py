@@ -102,3 +102,26 @@ def test_inline_schema_keeps_fields_named_title():
 
     schema = LLMRequest(task="t", model="m", system="", user="", output_type=WithTitle).inline_json_schema
     assert "title" in schema["properties"] and "title" not in schema
+
+
+def test_stop_words_do_not_overmatch_latin_prefixes():
+    r = KeywordRanker()
+    f = SearchFilters(exclude_words=["Java", "go"])
+    assert not r.score(PROFILE, RankInput("Senior JavaScript", "React"), f).excluded
+    assert not r.score(PROFILE, RankInput("Python dev", "Работа в Google"), f).excluded
+    assert r.score(PROFILE, RankInput("Java dev", "Spring"), f).excluded
+
+
+def test_malformed_items_are_skipped_not_fatal():
+    from app.sources import habr, trudvsem
+    from app.sources.base import safe_map
+    from app.sources.jsonld import draft_from_job_posting
+
+    items = [{"id": 1, "title": "Ok"}, {"id": 2, "title": "Bad", "salary": {"from": "много"}}, "junk"]
+    drafts = safe_map(habr.item_to_draft, items, source="habr")
+    assert [d.external_id for d in drafts] == ["1"]
+    jp = {"title": "QA", "jobLocation": {"address": {"addressCountry": {"@type": "Country", "name": "RU"}}},
+          "hiringOrganization": {"name": {"x": 1}}, "baseSalary": {"value": "1e999"}}
+    d = draft_from_job_posting(jp, source="manual", external_id="1", url=None)
+    assert d.location == "RU" and d.company is None and d.salary_from is None
+    assert safe_map(lambda w: trudvsem.item_to_draft(w["vacancy"]), [{"no": "vacancy"}]) == []

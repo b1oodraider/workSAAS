@@ -146,3 +146,13 @@ async def test_web_search_reports_captcha(monkeypatch):
     monkeypatch.setattr(src, "_fetcher", lambda: fetcher)
     with pytest.raises(SourceError, match="капчу"):
         await src.search(SearchQuery(text="python"), limit=10)
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("ЗП: 200-300k", (200000, 300000, None, None)),
+    ("вилка 250к на руки", (250000, None, None, False)),
+    ("150 000 ₽ до вычета налогов", (150000, None, "RUR", True)),
+    ("$3.5k", (3500, None, "USD", None)),
+])
+def test_parse_salary_shorthand(text, expected):
+    assert parse_salary_text(text) == expected

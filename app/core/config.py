@@ -143,6 +143,8 @@ class Settings(BaseSettings):
     # Language for LLM outputs (cover letters, reviews).
     output_language: str = "русский"
     default_monthly_budget_usd: float = 10.0
+    # Set true when the app is served over HTTPS (VPS behind Caddy/nginx): Secure cookie.
+    session_https_only: bool = False
     max_upload_mb: int = 10
 
     llm: LLMSettings = Field(default_factory=LLMSettings)

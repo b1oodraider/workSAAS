@@ -59,9 +59,7 @@ async def bot_vacancy(ctx: JobContext) -> dict:
         if p.get("url"):
             draft = await vacancy_svc.draft_from_url(p["url"])
             with session_scope() as s:
-                vacancy, _ = vacancy_svc.upsert(s, draft)
-                vacancy_svc.attach(s, ctx.user_id, vacancy.id)
-                vacancy_id = vacancy.id
+                vacancy_id = vacancy_svc.import_for_user(s, ctx.user_id, draft).id
         else:
             with session_scope() as s:
                 vacancy_id = vacancy_svc.create_manual(s, ctx.user_id, title="", text=p["text"]).id

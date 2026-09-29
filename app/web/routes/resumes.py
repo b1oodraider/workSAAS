@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -40,8 +41,11 @@ async def create(
             return RedirectResponse("/resumes", status_code=303)
         filename = file.filename
     try:
+        if data:
+            # PDF/DOCX parsing is CPU-bound: keep it off the event loop (the job worker shares it).
+            text = await run_in_threadpool(resume_svc.text_from_file, filename, data)
         resume = resume_svc.create(s, user.id, title=title, text=text, preferences=preferences,
-                                   filename=filename, file_data=data)
+                                   filename=filename)
     except ValidationFailed as exc:
         flash(request, str(exc), "error")
         return RedirectResponse("/resumes", status_code=303)

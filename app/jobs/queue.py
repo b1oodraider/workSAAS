@@ -120,7 +120,7 @@ async def run_job(job: Job) -> None:
         error = str(exc)
         log.warning("job %s (%s) failed: %s", job.id, job.kind, exc)
     except Exception as exc:  # noqa: BLE001 - worker must survive any handler bug
-        status, error = JobStatus.failed, f"Внутренняя ошибка: {exc!r}"
+        status, error = JobStatus.failed, f"Внутренняя ошибка ({type(exc).__name__}), подробности в логе сервера"
         log.error("job %s (%s) crashed:\n%s", job.id, job.kind, traceback.format_exc())
     with session_scope() as s:
         values: dict[str, Any] = {"status": status, "error": error}

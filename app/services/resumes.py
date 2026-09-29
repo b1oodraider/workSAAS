@@ -21,6 +21,13 @@ def list_for_user(s: Session, user_id: int) -> list[Resume]:
     return list(s.scalars(select(Resume).where(Resume.user_id == user_id).order_by(Resume.id.desc())))
 
 
+def text_from_file(filename: str | None, data: bytes) -> str:
+    try:
+        return extract_text(filename or "resume.txt", data)
+    except ExtractError as exc:
+        raise ValidationFailed(str(exc)) from exc
+
+
 def create(
     s: Session,
     user_id: int,

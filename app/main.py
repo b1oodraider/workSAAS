@@ -61,7 +61,7 @@ def create_app(*, start_background: bool | None = None) -> FastAPI:
 
     app = FastAPI(title="workSAAS", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax",
-                       max_age=60 * 60 * 24 * 30)
+                       max_age=60 * 60 * 24 * 30, https_only=settings.session_https_only)
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
     for module in (auth, resumes, vacancies, analyses, searches, jobs, usage, settings_routes):

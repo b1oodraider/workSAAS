@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -25,6 +25,8 @@ from app.sources import SearchFilters, SearchQuery, SourceError, get_source
 log = logging.getLogger(__name__)
 
 MAX_QUERIES = 6
+MIN_INTERVAL_MINUTES = 60
+MAX_SEARCHES_PER_USER = 20
 
 
 def get_owned(s: Session, user_id: int, search_id: int) -> SavedSearch:
@@ -46,6 +48,9 @@ def create(
     interval_minutes: int = 0,
 ) -> SavedSearch:
     resume = resume_svc.get_owned(s, user_id, resume_id)
+    count = s.scalar(select(func.count(SavedSearch.id)).where(SavedSearch.user_id == user_id))
+    if count >= MAX_SEARCHES_PER_USER:
+        raise ValidationFailed(f"Не больше {MAX_SEARCHES_PER_USER} сохранённых поисков — удалите лишние")
     if not sources:
         raise ValidationFailed("Выберите хотя бы один источник")
     for name_ in sources:
@@ -60,7 +65,8 @@ def create(
         sources=sources,
         queries=[q.strip() for q in queries if q.strip()],
         filters=SearchFilters.model_validate(filters).model_dump(),
-        interval_minutes=max(0, interval_minutes),
+        # Automatic runs no more often than hourly: be polite to job sites.
+        interval_minutes=0 if interval_minutes <= 0 else max(MIN_INTERVAL_MINUTES, interval_minutes),
     )
     s.add(search)
     s.flush()
@@ -116,6 +122,8 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
         search = get_owned(s, user_id, search_id)
         resume_id, source_names = search.resume_id, list(search.sources)
         filters = SearchFilters.model_validate(search.filters or {})
+        # Set before fetching: a failing run is not retried by the scheduler every minute.
+        search.last_run_at = utcnow()
 
     profile = await get_profile(user_id, resume_id)
     with session_scope() as s:
@@ -137,7 +145,10 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
                 drafts += await source.search(SearchQuery(text=q, filters=filters),
                                               settings.matching.fetch_limit)
             except SourceError as exc:
-                errors.append(f"{name} «{q}»: {exc}")
+                errors.append(f"{source.title} «{q}»: {exc}")
+            except Exception as exc:  # noqa: BLE001 - a parser bug in one source must not lose the others
+                log.exception("source %s failed on %r", name, q)
+                errors.append(f"{source.title} «{q}»: внутренняя ошибка ({type(exc).__name__})")
     if not drafts and errors:
         raise JobError("Источники недоступны: " + "; ".join(errors[:3]))
 
@@ -180,7 +191,6 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
                 )
             )
         )
-        s.get(SavedSearch, search_id).last_run_at = utcnow()
 
     scored.sort(reverse=True)
     to_match = [vid for score, vid in scored

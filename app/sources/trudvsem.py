@@ -14,12 +14,13 @@ import re
 from typing import Any
 
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, VacancyDraft
+from app.sources.base import JobSource, SearchQuery, VacancyDraft, as_dict, as_str, safe_map
 from app.sources.jsonld import parse_date
 from app.sources.web import fetch_json
 
 DEFAULT_BASE = "http://opendata.trudvsem.ru/api/v1"
 PAGE_SIZE = 100
+MAX_PAGES = 10
 
 
 def _int(v: Any) -> int | None:
@@ -35,9 +36,9 @@ def item_to_draft(vac: dict[str, Any]) -> VacancyDraft | None:
     title = vac.get("job-name") or vac.get("job_name")
     if not vid or not title:
         return None
-    company = vac.get("company") or {}
-    region = vac.get("region") or {}
-    req = vac.get("requirement") or {}
+    company = as_dict(vac.get("company"))
+    region = as_dict(vac.get("region"))
+    req = as_dict(vac.get("requirement"))
     parts = [html_to_text(vac.get("duty") or "")]
     if isinstance(req, dict):
         if req.get("qualification"):
@@ -51,14 +52,14 @@ def item_to_draft(vac: dict[str, Any]) -> VacancyDraft | None:
         external_id=str(vid),
         title=str(title)[:300],
         url=vac.get("vac_url"),
-        company=company.get("name") if isinstance(company, dict) else None,
-        location=region.get("name") if isinstance(region, dict) else None,
+        company=as_str(company.get("name")),
+        location=as_str(region.get("name")),
         salary_from=_int(vac.get("salary_min")),
         salary_to=_int(vac.get("salary_max")),
         currency="RUR",
         remote=True if re.search(r"удал[её]н|дистанц", schedule, re.I) else None,
         experience=f"от {exp} лет" if exp not in (None, "", 0, "0") else None,
-        employment=vac.get("employment"),
+        employment=as_str(vac.get("employment")),
         description="\n".join(p for p in parts if p),
         published_at=parse_date(vac.get("creation-date")),
     )
@@ -75,19 +76,17 @@ class TrudvsemSource(JobSource):
         region = self.cfg.options.get("region") or ""
         url = f"{base}/vacancies/region/{region}" if region else f"{base}/vacancies"
         drafts: list[VacancyDraft] = []
+        # The API's "offset" is a page number, not an item offset (per its documentation).
         offset = 0
-        while len(drafts) < limit:
+        while len(drafts) < limit and offset < MAX_PAGES:
             data = await fetch_json(url, params={"text": query.text, "offset": offset,
                                                  "limit": min(PAGE_SIZE, limit)},
                                     use_proxy=self.cfg.use_proxy, source=self.title)
             results = (data or {}).get("results") or {}
-            items = results.get("vacancies") or [] if isinstance(results, dict) else []
-            for wrapper in items:
-                vac = wrapper.get("vacancy") if isinstance(wrapper, dict) else None
-                draft = item_to_draft(vac) if isinstance(vac, dict) else None
-                if draft:
-                    drafts.append(draft)
-            if len(items) < min(PAGE_SIZE, limit):
+            items = (results.get("vacancies") or []) if isinstance(results, dict) else []
+            page = safe_map(lambda w: item_to_draft(w["vacancy"]), items, source=self.title)
+            drafts += page
+            if len(items) < min(PAGE_SIZE, limit) or not page:
                 break
             offset += 1
         return drafts[:limit]

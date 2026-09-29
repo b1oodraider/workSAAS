@@ -6,7 +6,10 @@ import ipaddress
 import re
 from urllib.parse import urlsplit
 
+import logging
+
 import httpx
+from bs4 import BeautifulSoup
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,6 +23,8 @@ from app.models import UserVacancy, UserVacancyStatus, Vacancy
 from app.services.errors import NotFound, ValidationFailed
 from app.sources import SourceError, VacancyDraft, available_sources, get_source
 from app.sources.jsonld import draft_from_html
+
+log = logging.getLogger(__name__)
 
 MAX_VACANCY_CHARS = 40_000
 
@@ -43,14 +48,31 @@ def make_dedup_key(company: str | None, title: str) -> str | None:
     return hashlib.sha1(f"{c}|{t}".encode()).hexdigest()
 
 
+# User-generated content can't become the shared "canonical" copy for other users:
+# otherwise anyone could plant a fake description under a real company's vacancy.
+UNTRUSTED_SOURCES = ("manual", "telegram", "rss")
+
+
 def canonical_for(s: Session, vacancy: Vacancy) -> Vacancy:
-    """The first stored vacancy with the same dedup key (itself if unique)."""
+    """The first stored vacancy from a trusted source with the same dedup key (itself if none)."""
     if not vacancy.dedup_key:
         return vacancy
     first = s.scalar(
-        select(Vacancy).where(Vacancy.dedup_key == vacancy.dedup_key).order_by(Vacancy.id).limit(1)
+        select(Vacancy)
+        .where(Vacancy.dedup_key == vacancy.dedup_key, Vacancy.source.not_in(UNTRUSTED_SOURCES))
+        .order_by(Vacancy.id).limit(1)
     )
     return first or vacancy
+
+
+def import_for_user(s: Session, user_id: int, draft: VacancyDraft) -> Vacancy:
+    """Store an imported vacancy; generic page imports are private per user (keyed by user)."""
+    if draft.source == "manual":
+        ext = hashlib.sha1(f"{user_id}:{draft.external_id}".encode()).hexdigest()[:32]
+        draft = draft.model_copy(update={"external_id": ext})
+    vacancy, _ = upsert(s, draft)
+    attach(s, user_id, vacancy.id)
+    return vacancy
 
 
 def upsert(s: Session, draft: VacancyDraft) -> tuple[Vacancy, bool]:
@@ -146,8 +168,9 @@ async def ensure_full(vacancy_id: int) -> None:
         source_name, ext_id = v.source, v.external_id
     try:
         draft = await get_source(source_name).fetch(ext_id)
-    except SourceError:
-        return  # analysis proceeds on the snippet; the prompt says it's partial
+    except Exception:  # noqa: BLE001 - analysis proceeds on the snippet; the prompt says it's partial
+        log.warning("could not fetch full vacancy %s/%s", source_name, ext_id, exc_info=True)
+        return
     if draft:
         with session_scope() as s:
             upsert(s, draft)
@@ -174,15 +197,18 @@ def create_manual(s: Session, user_id: int, *, title: str, text: str, url: str =
     return vacancy
 
 
-_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
-_STRIP_RE = re.compile(r"<(script|style|noscript|svg)[^>]*>.*?</\1>", re.I | re.S)
+MAX_PAGE_BYTES = 3 * 1024 * 1024
+FETCH_TOTAL_TIMEOUT_S = 45
 
 
 async def _ensure_public_host(url: str) -> None:
     """Block SSRF: users must not make the server fetch localhost/LAN/cloud-metadata addresses."""
-    host = urlsplit(url).hostname
-    if not host:
+    parts = urlsplit(url)
+    host = parts.hostname
+    if not host or parts.scheme not in ("http", "https"):
         raise JobError("Некорректная ссылка")
+    if parts.port not in (None, 80, 443):
+        raise JobError("Разрешены только стандартные порты 80/443")
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, None)
     except OSError as exc:
@@ -200,37 +226,56 @@ async def draft_from_url(url: str) -> VacancyDraft:
             draft = await src.fetch(ext_id)
             if draft:
                 return draft
-    # Generic page: best-effort text extraction. Redirects are followed manually so
-    # every hop is checked against internal addresses.
+    # Generic page: best-effort text extraction.
+    try:
+        html = await asyncio.wait_for(_fetch_public_page(url), timeout=FETCH_TOTAL_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        raise JobError("Страница грузится слишком долго") from None
+    return page_to_draft(html, url)
+
+
+async def _fetch_public_page(url: str) -> str:
+    """GET with a size cap; redirects are followed manually so every hop is checked
+    against internal addresses (residual risk: DNS rebinding between check and connect)."""
     async with make_async_client(follow_redirects=False) as client:
         target = url
         for _ in range(5):
             await _ensure_public_host(target)
             try:
-                resp = await client.get(target)
+                async with client.stream("GET", target) as resp:
+                    if resp.is_redirect and resp.headers.get("location"):
+                        target = str(resp.url.join(resp.headers["location"]))
+                        continue
+                    if resp.status_code >= 400:
+                        raise JobError(f"Страница вернула ошибку {resp.status_code}")
+                    chunks, size = [], 0
+                    async for chunk in resp.aiter_bytes():
+                        size += len(chunk)
+                        if size > MAX_PAGE_BYTES:
+                            raise JobError("Страница слишком большая")
+                        chunks.append(chunk)
+                    return b"".join(chunks).decode(resp.encoding or "utf-8", errors="replace")
             except httpx.HTTPError as exc:
-                raise JobError(f"Не удалось загрузить страницу: {exc}") from exc
-            if resp.is_redirect and resp.headers.get("location"):
-                target = str(resp.url.join(resp.headers["location"]))
-                continue
-            break
-        else:
-            raise JobError("Слишком много перенаправлений")
-    if resp.status_code >= 400:
-        raise JobError(f"Страница вернула ошибку {resp.status_code}")
-    html = resp.text
+                raise JobError(f"Не удалось загрузить страницу: {type(exc).__name__}") from exc
+        raise JobError("Слишком много перенаправлений")
+
+
+def page_to_draft(html: str, url: str) -> VacancyDraft:
     ext_id = hashlib.sha1(url.encode()).hexdigest()[:32]
     structured = draft_from_html(html, source="manual", external_id=ext_id, url=url)
     if structured and structured.description:
         return structured
-    m = _TITLE_RE.search(html)
-    text = html_to_text(_STRIP_RE.sub("", html))
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "svg", "nav", "footer", "header"]):
+        tag.decompose()
+    title = soup.title.get_text(" ", strip=True) if soup.title else ""
+    text = html_to_text(str(soup.body or soup))
     if len(text) < 100:
         raise JobError("На странице не найден текст вакансии — вставьте его вручную")
     return VacancyDraft(
         source="manual",
         external_id=ext_id,
-        title=html_to_text(m.group(1))[:300] if m else url,
+        title=(title or url)[:300],
         url=url,
         description=text[:MAX_VACANCY_CHARS],
     )
@@ -249,7 +294,5 @@ async def _import_job(ctx: JobContext) -> dict:
     except SourceError as exc:
         raise JobError(str(exc)) from exc
     with session_scope() as s:
-        vacancy, _ = upsert(s, draft)
-        attach(s, ctx.user_id, vacancy.id)
-        vacancy_id = vacancy.id
+        vacancy_id = import_for_user(s, ctx.user_id, draft).id
     return {"vacancy_id": vacancy_id, "result_url": f"/vacancies/{vacancy_id}"}

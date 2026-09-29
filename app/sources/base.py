@@ -2,17 +2,61 @@
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable
 from datetime import datetime
-from typing import Any
+from typing import Any, TypeVar
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from app.core.config import SourceConfig
 
 
+log = logging.getLogger(__name__)
+T = TypeVar("T")
+
+# What a parser may raise on unexpected third-party data.
+ITEM_ERRORS = (ValidationError, AttributeError, TypeError, KeyError, ValueError, OverflowError, IndexError)
+
+
 class SourceError(Exception):
     pass
+
+
+def safe_map(fn: Callable[[Any], "VacancyDraft | None"], items: Iterable[Any], *,
+             source: str = "") -> list["VacancyDraft"]:
+    """Parse items one by one: a malformed item is logged and skipped, never breaks the batch."""
+    result = []
+    for item in items or []:
+        try:
+            draft = fn(item)
+        except ITEM_ERRORS as exc:
+            log.warning("%s: skipped malformed item: %s", source or "source", exc)
+            continue
+        if draft is not None:
+            result.append(draft)
+    return result
+
+
+def as_str(value: Any) -> str | None:
+    """Third-party JSON often has objects where strings are expected ({"name": ...})."""
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, dict):
+        for key in ("name", "title", "value", "@value"):
+            if isinstance(value.get(key), str):
+                return value[key].strip() or None
+        return None
+    if isinstance(value, (int, float)):
+        return str(value)
+    return None
+
+
+def as_dict(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
 
 
 class SearchFilters(BaseModel):

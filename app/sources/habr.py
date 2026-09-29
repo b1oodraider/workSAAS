@@ -16,7 +16,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft
+from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, as_dict, as_str, safe_map
 from app.sources.jsonld import draft_from_html, parse_date
 from app.sources.web import fetch_json, make_fetcher
 
@@ -29,11 +29,11 @@ def item_to_draft(item: dict[str, Any]) -> VacancyDraft | None:
     title = item.get("title")
     if not vid or not title:
         return None
-    salary = item.get("salary") or {}
-    company = item.get("company") or {}
+    salary = as_dict(item.get("salary"))
+    company = as_dict(item.get("company"))
     skills = [s.get("title") for s in item.get("skills") or [] if isinstance(s, dict) and s.get("title")]
     locations = [loc.get("title") for loc in item.get("locations") or [] if isinstance(loc, dict)]
-    qualification = (item.get("salaryQualification") or item.get("qualification") or {})
+    qualification = as_dict(item.get("salaryQualification") or item.get("qualification"))
     divisions = [d.get("title") for d in item.get("divisions") or [] if isinstance(d, dict)]
     lines = []
     if qualification.get("title"):
@@ -49,7 +49,7 @@ def item_to_draft(item: dict[str, Any]) -> VacancyDraft | None:
         external_id=str(vid),
         title=str(title)[:300],
         url=SITE + item["href"] if str(item.get("href", "")).startswith("/") else f"{SITE}/vacancies/{vid}",
-        company=company.get("title") if isinstance(company, dict) else None,
+        company=as_str(company.get("title")),
         location=", ".join(filter(None, locations)) or None,
         salary_from=salary.get("from"),
         salary_to=salary.get("to"),
@@ -99,7 +99,7 @@ class HabrSource(JobSource):
             items = data.get("list") if isinstance(data, dict) else None
             if not items:
                 break
-            drafts += [d for d in (item_to_draft(i) for i in items if isinstance(i, dict)) if d]
+            drafts += safe_map(item_to_draft, items, source=self.title)
             meta = data.get("meta") or {}
             if page >= int(meta.get("totalPages") or 1):
                 break

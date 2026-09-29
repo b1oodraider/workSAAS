@@ -17,12 +17,13 @@ from typing import Any
 from bs4 import BeautifulSoup, Tag
 
 from app.core.text import html_to_text
-from app.sources.base import VacancyDraft
+from app.sources.base import VacancyDraft, as_dict, as_str, safe_map
 from app.sources.jsonld import find_job_posting, walk
 
 VACANCY_URL = "https://hh.ru/vacancy/{id}"
 _ID_RE = re.compile(r"/vacancy/(\d+)")
 _DIGITS_RE = re.compile(r"\d[\d\s  ]*")
+_K_SUFFIX_RE = re.compile(r"\d\s*[kк](?![a-zа-яё])")
 _CURRENCY = {"₽": "RUR", "руб": "RUR", "$": "USD", "€": "EUR", "₸": "KZT", "сум": "UZS", "br": "BYR"}
 
 
@@ -57,10 +58,16 @@ def parse_salary_text(text: str) -> tuple[int | None, int | None, str | None, bo
     if not text:
         return None, None, None, None
     low = text.lower()
-    nums = [int(re.sub(r"\D", "", m)) for m in _DIGITS_RE.findall(text)]
+    gross = False if "на руки" in low else (True if "до вычета" in low else None)
+    # "до вычета налогов" means gross, not an upper bound.
+    low = re.sub(r"до вычета(\s+налогов)?", " ", low)
+    if _K_SUFFIX_RE.search(low):
+        # Thousands shorthand common in Telegram posts: "200-300k", "250к", "$3.5k".
+        nums = [int(float(n.replace(",", ".")) * 1000) for n in re.findall(r"\d+(?:[.,]\d+)?", low)]
+    else:
+        nums = [int(re.sub(r"\D", "", m)) for m in _DIGITS_RE.findall(low)]
     nums = [n for n in nums if n >= 100]  # drop stray small numbers
     currency = next((code for sym, code in _CURRENCY.items() if sym in low), None)
-    gross = False if "на руки" in low else (True if "до вычета" in low else None)
     if not nums:
         return None, None, currency, gross
     if "от" in low and "до" in low and len(nums) >= 2:
@@ -100,11 +107,11 @@ def _draft_from_state_item(item: dict[str, Any]) -> VacancyDraft | None:
         return None
     company = item.get("company") or item.get("employer") or {}
     area = item.get("area") or {}
-    comp = item.get("compensation") or item.get("salary") or {}
-    snippet = item.get("snippet") or {}
+    comp = as_dict(item.get("compensation") or item.get("salary"))
+    snippet = as_dict(item.get("snippet"))
     parts = [html_to_text(str(snippet.get(k) or "")) for k in ("req", "requirement", "resp", "responsibility")]
     work = json.dumps(item.get("workSchedule") or item.get("schedule") or item.get("workFormats") or "")
-    links = item.get("links") or {}
+    links = as_dict(item.get("links"))
     pub = item.get("publicationTime") or item.get("publishedAt") or item.get("creationTime")
     if isinstance(pub, dict):
         pub = pub.get("$") or pub.get("value")
@@ -113,8 +120,8 @@ def _draft_from_state_item(item: dict[str, Any]) -> VacancyDraft | None:
         external_id=str(vid),
         title=name,
         url=links.get("desktop") or VACANCY_URL.format(id=vid),
-        company=(_first(company, "visibleName", "name") if isinstance(company, dict) else None),
-        location=(area.get("name") if isinstance(area, dict) else None),
+        company=as_str(_first(company, "visibleName", "name") if isinstance(company, dict) else company),
+        location=as_str(area),
         salary_from=comp.get("from") if isinstance(comp, dict) else None,
         salary_to=comp.get("to") if isinstance(comp, dict) else None,
         currency=(_first(comp, "currencyCode", "currency") if isinstance(comp, dict) else None),
@@ -128,11 +135,9 @@ def _draft_from_state_item(item: dict[str, Any]) -> VacancyDraft | None:
 
 def _drafts_from_state(state: Any) -> list[VacancyDraft]:
     drafts: dict[str, VacancyDraft] = {}
-    for d in walk(state):
-        if "vacancyId" in d and ("name" in d or "title" in d):
-            draft = _draft_from_state_item(d)
-            if draft and draft.external_id not in drafts:
-                drafts[draft.external_id] = draft
+    candidates = [d for d in walk(state) if "vacancyId" in d and ("name" in d or "title" in d)]
+    for draft in safe_map(_draft_from_state_item, candidates, source="hh web"):
+        drafts.setdefault(draft.external_id, draft)
     return list(drafts.values())
 
 

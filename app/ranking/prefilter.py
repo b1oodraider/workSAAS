@@ -56,10 +56,19 @@ def _contains(haystack: str, phrase: str) -> bool:
     return bool(needle) and f" {needle} " in haystack
 
 
+_CYRILLIC_WORD_RE = re.compile(r"^[а-я]{5,}$")
+
+
 def _contains_stem(haystack: str, phrase: str) -> bool:
-    """Match word forms for stop words: 'гемблинг' also hits 'гемблинга', 'гемблингом'."""
+    """Stop words: Russian words of 5+ letters also match inflected forms ('гемблинг' ->
+    'гемблинга'); anything else is a whole-token match, so 'Java' does not exclude
+    'JavaScript' and 'go' does not exclude 'Google'."""
     needle = normalize(phrase).strip()
-    return bool(needle) and f" {needle}" in haystack
+    if not needle:
+        return False
+    if _CYRILLIC_WORD_RE.match(needle.split()[-1]):
+        return f" {needle}" in haystack
+    return f" {needle} " in haystack
 
 
 # Currencies the salary filter understands as rubles (the filter value is in rubles).

@@ -14,7 +14,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from app.core.text import html_to_text
-from app.sources.base import VacancyDraft
+from app.sources.base import VacancyDraft, as_str, safe_map
 
 
 def walk(obj: Any) -> Iterator[dict[str, Any]]:
@@ -58,7 +58,7 @@ def parse_date(value: Any) -> datetime | None:
 def _num(v: Any) -> int | None:
     try:
         return int(float(v))
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         return None
 
 
@@ -67,8 +67,7 @@ def draft_from_job_posting(jp: dict[str, Any], *, source: str, external_id: str,
     title = jp.get("title")
     if not isinstance(title, str) or not title.strip():
         return None
-    org = jp.get("hiringOrganization")
-    company = org.get("name") if isinstance(org, dict) else (org if isinstance(org, str) else None)
+    company = as_str(jp.get("hiringOrganization"))
 
     location = None
     loc = jp.get("jobLocation")
@@ -77,15 +76,16 @@ def draft_from_job_posting(jp: dict[str, Any], *, source: str, external_id: str,
     if isinstance(loc, dict):
         addr = loc.get("address")
         if isinstance(addr, dict):
-            location = addr.get("addressLocality") or addr.get("addressRegion") or addr.get("addressCountry")
-        elif isinstance(addr, str):
-            location = addr
+            location = (as_str(addr.get("addressLocality")) or as_str(addr.get("addressRegion"))
+                        or as_str(addr.get("addressCountry")))
+        else:
+            location = as_str(addr)
 
     sal_from = sal_to = None
     currency = None
     base = jp.get("baseSalary")
     if isinstance(base, dict):
-        currency = base.get("currency")
+        currency = as_str(base.get("currency"))
         value = base.get("value")
         if isinstance(value, dict):
             sal_from = _num(value.get("minValue"))
@@ -112,7 +112,7 @@ def draft_from_job_posting(jp: dict[str, Any], *, source: str, external_id: str,
         source=source,
         external_id=external_id,
         title=title.strip()[:300],
-        url=url or jp.get("url"),
+        url=url or as_str(jp.get("url")),
         company=company,
         location=location,
         salary_from=sal_from,
@@ -129,4 +129,8 @@ def draft_from_job_posting(jp: dict[str, Any], *, source: str, external_id: str,
 
 def draft_from_html(html: str, *, source: str, external_id: str, url: str | None) -> VacancyDraft | None:
     jp = find_job_posting(BeautifulSoup(html, "html.parser"))
-    return draft_from_job_posting(jp, source=source, external_id=external_id, url=url) if jp else None
+    if not jp:
+        return None
+    found = safe_map(lambda j: draft_from_job_posting(j, source=source, external_id=external_id, url=url),
+                     [jp], source=source)
+    return found[0] if found else None

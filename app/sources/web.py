@@ -83,21 +83,59 @@ class _HostRateLimiter:
 rate_limiter = _HostRateLimiter()
 
 
+class _TTLCache:
+    """Tiny in-process cache: one search run asks the same feed for every query."""
+
+    def __init__(self, max_items: int = 256) -> None:
+        self._data: dict[Any, tuple[float, Any]] = {}
+        self.max_items = max_items
+
+    def get(self, key: Any) -> Any | None:
+        item = self._data.get(key)
+        if item is None or item[0] < time.monotonic():
+            self._data.pop(key, None)
+            return None
+        return item[1]
+
+    def put(self, key: Any, value: Any, ttl: float) -> None:
+        if len(self._data) >= self.max_items:
+            self._data.pop(next(iter(self._data)))
+        self._data[key] = (time.monotonic() + ttl, value)
+
+    def clear(self) -> None:
+        self._data.clear()
+
+
+response_cache = _TTLCache()
+
+
+def _cache_key(url: str, params: dict[str, Any] | None) -> tuple:
+    return (url, tuple(sorted((params or {}).items())))
+
+
 class HttpFetcher:
     def __init__(self, *, use_proxy: bool = False, min_interval: float = 1.5,
-                 headers: dict[str, str] | None = None, timeout: float = 30.0) -> None:
+                 headers: dict[str, str] | None = None, timeout: float = 30.0,
+                 cache_ttl: float = 0.0) -> None:
         proxy = get_settings().proxy_url if use_proxy else None
         self.min_interval = min_interval
+        self.cache_ttl = cache_ttl
         self.client = httpx.AsyncClient(proxy=proxy, timeout=timeout, follow_redirects=True,
                                         headers={**BROWSER_HEADERS, **(headers or {})})
 
     async def get(self, url: str, params: dict[str, Any] | None = None) -> Page:
+        key = _cache_key(url, params)
+        if self.cache_ttl and (cached := response_cache.get(key)) is not None:
+            return cached
         await rate_limiter.wait(urlsplit(url).netloc, self.min_interval)
         try:
             resp = await self.client.get(url, params=params)
         except httpx.HTTPError as exc:
             raise SourceError(f"{urlsplit(url).netloc} недоступен: {exc}") from exc
-        return Page(url=str(resp.url), status=resp.status_code, text=resp.text)
+        page = Page(url=str(resp.url), status=resp.status_code, text=resp.text)
+        if self.cache_ttl and page.status == 200:
+            response_cache.put(key, page, self.cache_ttl)
+        return page
 
     async def close(self) -> None:
         await self.client.aclose()
@@ -132,29 +170,29 @@ class BrowserFetcher:
             raise SourceError(
                 "Браузерный режим не установлен: pip install -e \".[browser]\" && playwright install chromium"
             ) from exc
-        self._pw = await async_playwright().start()
         launch: dict[str, Any] = {"headless": True}
         proxy = get_settings().proxy_url
         if self.use_proxy and proxy:
             launch["proxy"] = {"server": proxy}
         try:
+            self._pw = await async_playwright().start()
             self._browser = await self._pw.chromium.launch(**launch)
+            self._context = await self._browser.new_context(
+                user_agent=BROWSER_HEADERS["User-Agent"], locale="ru-RU",
+                viewport={"width": 1366, "height": 900},
+            )
         except Exception as exc:  # noqa: BLE001 - missing browser binary etc.
-            await self._pw.stop()
-            self._pw = None
+            await self.close()
             raise SourceError(f"Не удалось запустить браузер: {exc}. Выполните: playwright install chromium") from exc
-        self._context = await self._browser.new_context(
-            user_agent=BROWSER_HEADERS["User-Agent"], locale="ru-RU",
-            viewport={"width": 1366, "height": 900},
-        )
 
     async def get(self, url: str, params: dict[str, Any] | None = None) -> Page:
         await self._ensure()
         if params:
             url = str(httpx.URL(url, params=params))
         await rate_limiter.wait(urlsplit(url).netloc, self.min_interval)
-        page = await self._context.new_page()
+        page = None
         try:
+            page = await self._context.new_page()
             resp = await page.goto(url, wait_until="domcontentloaded", timeout=self.timeout_ms)
             # Give anti-bot JS a moment to redirect to the real page.
             await page.wait_for_timeout(1500)
@@ -163,14 +201,17 @@ class BrowserFetcher:
         except Exception as exc:  # noqa: BLE001 - playwright timeout/network errors
             raise SourceError(f"Браузер не смог открыть {url}: {exc}") from exc
         finally:
-            await page.close()
+            if page is not None:
+                await page.close()
 
     async def close(self) -> None:
-        if self._browser is not None:
-            await self._browser.close()
-        if self._pw is not None:
-            await self._pw.stop()
-        self._pw = self._browser = self._context = None
+        try:
+            if self._browser is not None:
+                await self._browser.close()
+        finally:
+            if self._pw is not None:
+                await self._pw.stop()
+            self._pw = self._browser = self._context = None
 
 
 class AutoFetcher:
@@ -191,14 +232,19 @@ class AutoFetcher:
         return await self.browser.get(url, params)
 
     async def close(self) -> None:
-        await self.http.close()
-        await self.browser.close()
+        try:
+            await self.http.close()
+        finally:
+            await self.browser.close()
 
 
 async def fetch_json(url: str, *, params: dict[str, Any] | None = None, use_proxy: bool = False,
                      headers: dict[str, str] | None = None, source: str = "",
-                     min_interval: float = 0.5) -> Any:
+                     min_interval: float = 0.5, cache_ttl: float = 0.0) -> Any:
     """GET a JSON API with the shared rate limiter; errors become SourceError."""
+    key = ("json",) + _cache_key(url, params)
+    if cache_ttl and (cached := response_cache.get(key)) is not None:
+        return cached
     host = urlsplit(url).netloc
     await rate_limiter.wait(host, min_interval)
     proxy = get_settings().proxy_url if use_proxy else None
@@ -212,15 +258,18 @@ async def fetch_json(url: str, *, params: dict[str, Any] | None = None, use_prox
     if resp.status_code >= 400:
         raise SourceError(f"{source or host} ответил {resp.status_code}")
     try:
-        return resp.json()
+        data = resp.json()
     except ValueError as exc:
         raise SourceError(f"{source or host} вернул не JSON") from exc
+    if cache_ttl:
+        response_cache.put(key, data, cache_ttl)
+    return data
 
 
 def make_fetcher(mode: FetchMode = "auto", *, use_proxy: bool = False,
-                 min_interval: float = 1.5) -> PageFetcher:
+                 min_interval: float = 1.5, cache_ttl: float = 0.0) -> PageFetcher:
     if mode == "http":
-        return HttpFetcher(use_proxy=use_proxy, min_interval=min_interval)
+        return HttpFetcher(use_proxy=use_proxy, min_interval=min_interval, cache_ttl=cache_ttl)
     if mode == "browser":
         return BrowserFetcher(use_proxy=use_proxy, min_interval=min_interval)
     return AutoFetcher(use_proxy=use_proxy, min_interval=min_interval)

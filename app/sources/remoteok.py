@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import Any
 
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, VacancyDraft, matches_query
+from app.sources.base import JobSource, SearchQuery, VacancyDraft, matches_query, safe_map
 from app.sources.jsonld import parse_date
 from app.sources.web import fetch_json
 
@@ -47,15 +47,16 @@ class RemoteOKSource(JobSource):
     checked_by_default = False
 
     async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]:
-        data = await fetch_json(API, use_proxy=self.cfg.use_proxy, source=self.title, min_interval=5.0)
+        # The whole feed is fetched once per ~10 minutes and filtered locally for each query.
+        data = await fetch_json(API, use_proxy=self.cfg.use_proxy, source=self.title, min_interval=5.0,
+                                cache_ttl=600)
         items = [i for i in data or [] if isinstance(i, dict) and "position" in i]
-        drafts = []
-        for item in items:
-            text = " ".join([str(item.get("position", "")), " ".join(map(str, item.get("tags") or [])),
+        def relevant(item: dict) -> bool:
+            tags = item.get("tags") if isinstance(item.get("tags"), list) else []
+            text = " ".join([str(item.get("position", "")), " ".join(map(str, tags)),
                              str(item.get("description", ""))[:2000]])
-            if matches_query(text, query.text):
-                draft = item_to_draft(item)
-                if draft:
-                    drafts.append(draft)
+            return matches_query(text, query.text)
+
+        drafts = safe_map(item_to_draft, [i for i in items if relevant(i)], source=self.title)
         drafts.sort(key=lambda d: d.published_at or datetime.min, reverse=True)
         return drafts[:limit]
