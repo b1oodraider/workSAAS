@@ -55,7 +55,9 @@ class OpenAICompatProvider:
         return payload
 
     async def generate(self, req: LLMRequest) -> LLMResponse:
-        headers = {"Authorization": f"Bearer {self.cfg.api_key}"} if self.cfg.api_key else {}
+        scheme = self.cfg.auth_scheme or "Bearer"
+        headers = {"Authorization": f"{scheme} {self.cfg.api_key}"} if self.cfg.api_key else {}
+        headers.update(self.cfg.resolved_headers())
         payload = self._payload(req)
         last_exc: Exception | None = None
         async with make_async_client(

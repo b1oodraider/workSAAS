@@ -18,13 +18,47 @@ use_proxy = false
 # Автоматический повтор на другой модели, если модель отказалась отвечать.
 refusal_fallback = true
 
-# Любой OpenAI-совместимый сервер: OpenRouter, DeepSeek, Ollama, LM Studio, vLLM...
-# [llm.providers.openrouter]
+# --- Оплата из России (см. reports/Оплата LLM из России 2026.md) -----------------
+# ВНИМАНИЕ: адреса и способы авторизации ниже взяты из документации/выдержек на 2026-09
+# и НЕ проверялись запросом — сверьте с сайтом провайдера перед оплатой.
+
+# Claude через реселлера с оплатой в рублях (родной формат Anthropic, ключ как Bearer).
+# [llm.providers.aitunnel]
+# type = "anthropic"
+# base_url = "https://api.aitunnel.ru"
+# api_key_env = "AITUNNEL_API_KEY"
+# auth_scheme = "bearer"
+# price_multiplier = 2.4        # наценка к официальной цене — чтобы бюджет считался честно
+#
+# [llm.providers.proxyapi]
+# type = "anthropic"
+# base_url = "https://api.proxyapi.ru/anthropic"
+# api_key_env = "PROXYAPI_API_KEY"
+# auth_scheme = "bearer"
+# price_multiplier = 3.6
+
+# Cloud.ru Foundation Models (GigaChat, Qwen, GLM) — OpenAI-совместимый API, карта РФ.
+# [llm.providers.cloudru]
 # type = "openai_compat"
-# base_url = "https://openrouter.ai/api/v1"
-# api_key_env = "OPENROUTER_API_KEY"
+# base_url = "https://foundation-models.api.cloud.ru/v1"
+# api_key_env = "CLOUDRU_API_KEY"
 # json_mode = "json_object"
-# use_proxy = true
+
+# Yandex AI Studio — OpenAI-совместимый API; модель указывается как "gpt://<folder_id>/<модель>/latest".
+# Какой заголовок авторизации нужен для вашего ключа (Bearer или Api-Key) — проверьте в документации.
+# [llm.providers.yandex]
+# type = "openai_compat"
+# base_url = "https://llm.api.cloud.yandex.net/v1"
+# api_key_env = "YANDEX_API_KEY"
+# auth_scheme = "Api-Key"
+# json_mode = "json_object"
+
+# Любой OpenAI-совместимый сервер: DeepSeek, OpenRouter (из РФ закрыт с 2026-06), Ollama, LM Studio, vLLM...
+# [llm.providers.deepseek]
+# type = "openai_compat"
+# base_url = "https://api.deepseek.com/v1"
+# api_key_env = "DEEPSEEK_API_KEY"
+# json_mode = "json_object"
 
 # Локальная модель через Ollama (на ноутбуке без GPU — медленно, 7B-модели дают заметно
 # худшее качество; разумно разве что для оценки вакансий/префильтра).
@@ -65,6 +99,16 @@ effort = "low"
 # provider = "anthropic"
 # model = "claude-opus-5-5"
 # effort = "high"
+
+# Резервные провайдеры: если основной недоступен (сеть, лимиты, упал реселлер),
+# gateway по очереди пробует fallbacks. Пример для всех фич по умолчанию:
+# [llm.routes.default]
+# provider = "aitunnel"
+# model = "claude-opus-5-5"
+# effort = "medium"
+# fallbacks = [
+#   { provider = "cloudru", model = "<id модели GigaChat из консоли Cloud.ru>" },
+# ]
 
 # Цены для учёта бюджета ($ за 1M токенов). Для Claude уже заданы в app/llm/pricing.py;
 # для других моделей добавьте сами, иначе их стоимость считается нулевой.

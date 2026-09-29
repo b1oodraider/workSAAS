@@ -29,7 +29,13 @@ class AnthropicProvider:
         self.cfg = cfg
         kwargs: dict[str, Any] = {"timeout": cfg.timeout_s, "max_retries": cfg.max_retries}
         if cfg.api_key:
-            kwargs["api_key"] = cfg.api_key
+            # Resellers usually expect "Authorization: Bearer <key>" instead of x-api-key.
+            if cfg.auth_scheme.lower() == "bearer":
+                kwargs["auth_token"] = cfg.api_key
+            else:
+                kwargs["api_key"] = cfg.api_key
+        if cfg.headers:
+            kwargs["default_headers"] = cfg.resolved_headers()
         if cfg.base_url:
             kwargs["base_url"] = cfg.base_url
         proxy = get_settings().proxy_url

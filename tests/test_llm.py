@@ -73,3 +73,31 @@ async def test_untrusted_text_cannot_break_out_of_data_tags(user_id):
     user = FakeProvider.calls[-1].user
     assert user.count("</vacancy>") == 1 and user.count("<vacancy>") == 1
     assert "‹/vacancy>" in user
+
+
+async def test_fallback_provider_used_when_primary_fails(env, user_id):
+    from app.core.config import LLMRoute, LLMTarget, ModelPrice, ProviderConfig
+    from app.llm.base import LLMUnavailable
+    from app.llm.gateway import LLMGateway
+
+    class Down:
+        name = "down"
+
+        async def generate(self, req):
+            raise LLMUnavailable("reseller is down")
+
+    env.llm.providers["down"] = ProviderConfig(type="fake")
+    env.llm.providers["fake2"] = ProviderConfig(type="fake", price_multiplier=2.0)
+    env.llm.routes["vacancy_review"] = LLMRoute(provider="down", model="m1",
+                                                fallbacks=[LLMTarget(provider="fake2", model="m2")])
+    env.llm.prices["m2"] = ModelPrice(input=1_000_000.0, output=0.0)
+    gw = LLMGateway(env, providers={"down": Down()})
+    result = await gw.run(FEATURES["vacancy_review"].task, {"vacancy": "Fallback"}, user_id=user_id)
+    assert result.provider == "fake2" and not result.cached
+    usage = FakeProvider.calls[-1]
+    assert result.cost_usd == pytest.approx(2.0 * (len(usage.system + usage.user) // 4))
+    again = await gw.run(FEATURES["vacancy_review"].task, {"vacancy": "Fallback"}, user_id=user_id)
+    assert again.cached and again.provider == "fake2"
+    with session_scope() as s:
+        rows = s.query(LLMUsage).order_by(LLMUsage.id).all()
+    assert [(r.provider, r.ok) for r in rows] == [("down", False), ("fake2", True), ("fake2", True)]

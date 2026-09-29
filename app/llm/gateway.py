@@ -12,13 +12,21 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 
-from app.core.config import Settings, get_settings
+from app.core.config import LLMTarget, Settings, get_settings
 from app.core.db import session_scope, utcnow
 from app.core.text import stable_hash
-from app.llm.base import BudgetExceeded, LLMError, LLMProvider, LLMRequest, TokenUsage
+from app.llm.base import (
+    BudgetExceeded,
+    LLMError,
+    LLMInvalidOutput,
+    LLMProvider,
+    LLMRefusal,
+    LLMRequest,
+    TokenUsage,
+)
 from app.llm.pricing import cost_usd
 from app.llm.providers import build_provider
 from app.llm.tasks import LLMTask
@@ -98,62 +106,87 @@ class LLMGateway:
         route = self.settings.llm.route_for(task.name)
         variables = {"language": self.settings.output_language, **variables}
         system, user = task.render(variables)
-        key = stable_hash(task.name, task.version, route.provider, route.model, route.effort, system, user)
         use_cache = use_cache and self.settings.llm.cache_enabled
+        targets = route.targets()
 
+        # Any target's cached answer is good enough (e.g. produced while the primary was down).
         if use_cache:
-            with session_scope() as s:
-                hit = s.get(LLMCache, key)
-                cached_output = dict(hit.output) if hit else None
-            if cached_output is not None:
-                self._record(user_id, task.name, route.provider, route.model, TokenUsage(), 0.0,
-                             cached=True, ok=True, latency_ms=0)
-                return TaskResult(
-                    output=task.output.model_validate(cached_output),
-                    provider=route.provider,
-                    model=route.model,
-                    prompt_version=task.version,
-                    cached=True,
-                    cost_usd=0.0,
-                )
+            for target in targets:
+                hit = self._cache_get(self._cache_key(task, target, system, user))
+                if hit is not None:
+                    self._record(user_id, task.name, target.provider, target.model, TokenUsage(), 0.0,
+                                 cached=True, ok=True, latency_ms=0)
+                    return TaskResult(output=task.output.model_validate(hit), provider=target.provider,
+                                      model=target.model, prompt_version=task.version, cached=True,
+                                      cost_usd=0.0)
 
         self._check_budget(user_id)
-        provider = self.provider(route.provider)
+        last_error: LLMError | None = None
+        for i, target in enumerate(targets):
+            try:
+                result = await self._call(task, target, system, user, user_id)
+            except LLMRefusal:
+                raise  # another provider is not a fix for a policy decline
+            except LLMError as exc:
+                last_error = exc
+                if i + 1 < len(targets):
+                    log.warning("llm %s via %s failed (%s), trying fallback %s", task.name,
+                                target.provider, exc, targets[i + 1].provider)
+                continue
+            if use_cache:
+                with session_scope() as s:
+                    s.merge(LLMCache(key=self._cache_key(task, target, system, user), task=task.name,
+                                     provider=target.provider, model=target.model,
+                                     output=result.output.model_dump(mode="json")))
+            return result
+        assert last_error is not None
+        raise last_error
+
+    @staticmethod
+    def _cache_key(task: LLMTask, target: LLMTarget, system: str, user: str) -> str:
+        return stable_hash(task.name, task.version, target.provider, target.model, target.effort, system, user)
+
+    @staticmethod
+    def _cache_get(key: str) -> dict[str, Any] | None:
+        with session_scope() as s:
+            hit = s.get(LLMCache, key)
+            return dict(hit.output) if hit else None
+
+    async def _call(self, task: LLMTask[T], target: LLMTarget, system: str, user: str,
+                    user_id: int | None) -> TaskResult[T]:
+        provider = self.provider(target.provider)
         req = LLMRequest(
             task=task.name,
-            model=route.model,
+            model=target.model,
             system=system,
             user=user,
             output_type=task.output,
-            max_tokens=route.max_tokens or task.max_tokens,
-            effort=route.effort,
+            max_tokens=target.max_tokens or task.max_tokens,
+            effort=target.effort,
             cache_system=task.cache_system,
         )
         started = time.monotonic()
         try:
             resp = await provider.generate(req)
+            output = task.output.model_validate(resp.data)
+        except ValidationError as exc:
+            self._record(user_id, task.name, target.provider, target.model, TokenUsage(), 0.0,
+                         cached=False, ok=False, latency_ms=int((time.monotonic() - started) * 1000))
+            raise LLMInvalidOutput(f"Output does not match schema: {exc}") from exc
         except LLMError:
-            self._record(user_id, task.name, route.provider, route.model, TokenUsage(), 0.0,
+            self._record(user_id, task.name, target.provider, target.model, TokenUsage(), 0.0,
                          cached=False, ok=False, latency_ms=int((time.monotonic() - started) * 1000))
             raise
         latency_ms = int((time.monotonic() - started) * 1000)
-        cost = cost_usd(route.model, resp.usage)
-        output = task.output.model_validate(resp.data)
-        self._record(user_id, task.name, route.provider, resp.model, resp.usage, cost,
+        cfg = self.settings.llm.providers.get(target.provider)
+        multiplier = cfg.price_multiplier if cfg else 1.0
+        cost = round(cost_usd(target.model, resp.usage) * multiplier, 6)
+        self._record(user_id, task.name, target.provider, resp.model, resp.usage, cost,
                      cached=False, ok=True, latency_ms=latency_ms)
-        if use_cache:
-            with session_scope() as s:
-                s.merge(LLMCache(key=key, task=task.name, provider=route.provider,
-                                 model=route.model, output=output.model_dump(mode="json")))
-        log.info("llm task=%s model=%s cost=$%.4f latency=%dms", task.name, resp.model, cost, latency_ms)
-        return TaskResult(
-            output=output,
-            provider=route.provider,
-            model=resp.model,
-            prompt_version=task.version,
-            cached=False,
-            cost_usd=cost,
-        )
+        log.info("llm task=%s provider=%s model=%s cost=$%.4f latency=%dms", task.name, target.provider,
+                 resp.model, cost, latency_ms)
+        return TaskResult(output=output, provider=target.provider, model=resp.model,
+                          prompt_version=task.version, cached=False, cost_usd=cost)
 
     def _record(
         self,

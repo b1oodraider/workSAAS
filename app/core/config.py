@@ -39,19 +39,41 @@ class ProviderConfig(BaseModel):
     # openai_compat only: how to ask for JSON. "json_schema" is best when supported,
     # "json_object" works with most servers (Ollama, LM Studio, DeepSeek).
     json_mode: Literal["json_schema", "json_object", "none"] = "json_object"
+    # How the key is sent. anthropic: "x-api-key" (Anthropic) or "bearer" (most resellers).
+    # openai_compat: "bearer" (default) or e.g. "Api-Key" for Yandex AI Studio API keys.
+    auth_scheme: str = ""
+    # Extra HTTP headers (e.g. a Yandex folder id), values may reference env vars as ${NAME}.
+    headers: dict[str, str] = Field(default_factory=dict)
+    # Reseller markup relative to the official price table (budget accounting), e.g. 2.4.
+    price_multiplier: float = 1.0
 
     @property
     def api_key(self) -> str | None:
         return os.environ.get(self.api_key_env) if self.api_key_env else None
 
+    def resolved_headers(self) -> dict[str, str]:
+        return {k: os.path.expandvars(v) for k, v in self.headers.items()}
 
-class LLMRoute(BaseModel):
-    """Which provider/model handles a given LLM task (by task name)."""
 
+class LLMTarget(BaseModel):
     provider: str
     model: str
     effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
     max_tokens: int | None = None
+
+
+class LLMRoute(LLMTarget):
+    """Which provider/model handles a given LLM task (by task name).
+
+    ``fallbacks`` are tried in order when the primary is unavailable (network,
+    rate limit, 5xx, auth/config error) — e.g. a reseller is down.
+    """
+
+    fallbacks: list[LLMTarget] = Field(default_factory=list)
+
+    def targets(self) -> list[LLMTarget]:
+        return [LLMTarget(provider=self.provider, model=self.model, effort=self.effort,
+                          max_tokens=self.max_tokens), *self.fallbacks]
 
 
 class ModelPrice(BaseModel):
