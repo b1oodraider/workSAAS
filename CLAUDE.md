@@ -17,7 +17,18 @@ Read `docs/ARCHITECTURE.md` before changing structure. Key rules:
   (see `app/llm/prompts/_common.j2`).
 - UI text and prompts are in Russian; code and comments in English.
 
-Run `pytest` before committing: it uses the fake LLM provider and needs no network.
+- User-facing failures raise subclasses of `app.core.errors.UserError` (`NotFound`, `ValidationFailed`,
+  `JobError`, `LLMError`, `SourceError`); set `retryable = True` only for transient ones.
+- New source: set `trusted = False` if its text is written by arbitrary people (it must never
+  become the shared canonical vacancy). Parse third-party items with `safe_map`.
+- Bot messages use `parse_mode=HTML`: escape every dynamic value with `esc()` and shorten plain
+  text with `clip()` *before* escaping.
+- Migrations on SQLite run with foreign keys off (see `migrations/env.py`); new NOT NULL columns
+  need a `server_default`.
+
+Before committing run `ruff check app tests` and `pytest` (fake LLM, fake Telegram, no network).
+`tests/test_architecture.py` fails on layering violations — fix the design, don't add exceptions.
+`worksaas doctor [--llm]` checks config and live connectivity on a real machine.
 
 ## Review agents
 
