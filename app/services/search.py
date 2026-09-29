@@ -14,7 +14,7 @@ from app.features import get_feature
 from app.features.resume_profile.schema import ResumeProfile
 from app.jobs import JobContext, enqueue, job_handler
 from app.jobs.queue import JobError
-from app.models import Analysis, SavedSearch, UserVacancy, Vacancy
+from app.models import Analysis, Job, JobStatus, SavedSearch, UserVacancy, Vacancy
 from app.ranking.prefilter import KeywordRanker, RankInput, RankProfile, Ranker
 from app.services import analysis as analysis_svc
 from app.services import resumes as resume_svc
@@ -191,6 +191,12 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
                 )
             )
         )
+        # Matches still waiting in the queue (e.g. a re-run before the previous one finished).
+        for job in s.scalars(select(Job).where(Job.user_id == user_id, Job.kind == "analysis",
+                                               Job.status.in_([JobStatus.queued, JobStatus.running]))):
+            p = job.payload or {}
+            if p.get("kind") == "match" and p.get("resume_id") == resume_id:
+                already.add(p.get("vacancy_id"))
 
     scored.sort(reverse=True)
     to_match = [vid for score, vid in scored

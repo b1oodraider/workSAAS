@@ -29,6 +29,11 @@ class JobContext:
     job_id: int
     user_id: int | None
     payload: dict[str, Any]
+    attempt: int = 1
+
+    @property
+    def final_attempt(self) -> bool:
+        return self.attempt >= get_settings().jobs.max_attempts
 
     def enqueue_child(self, kind: str, payload: dict[str, Any], *, title: str = "",
                       result_url: str | None = None) -> int:
@@ -78,8 +83,15 @@ def enqueue(
 
 
 def recover_stale_jobs() -> int:
-    """Jobs left 'running' by a crashed/stopped process go back to the queue."""
+    """Jobs left 'running' by a stopped process go back to the queue — unless they have
+    used up their attempts (a job that crashes the process must not loop forever)."""
+    max_attempts = get_settings().jobs.max_attempts
     with session_scope() as s:
+        s.execute(
+            update(Job).where(Job.status == JobStatus.running, Job.attempts >= max_attempts)
+            .values(status=JobStatus.failed, finished_at=utcnow(),
+                    error="Задача прервалась (перезапуск сервера) и больше не повторяется")
+        )
         res = s.execute(
             update(Job).where(Job.status == JobStatus.running).values(status=JobStatus.queued)
         )
@@ -105,7 +117,8 @@ def _claim_next() -> Job | None:
 
 async def run_job(job: Job) -> None:
     handler = _HANDLERS.get(job.kind)
-    ctx = JobContext(job_id=job.id, user_id=job.user_id, payload=dict(job.payload or {}))
+    ctx = JobContext(job_id=job.id, user_id=job.user_id, payload=dict(job.payload or {}),
+                     attempt=job.attempts)
     status, error, result = JobStatus.done, None, None
     try:
         if handler is None:

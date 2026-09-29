@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,7 +22,18 @@ def latest_output(s: Session, user_id: int, kind: str, *, resume_id: int | None 
     if vacancy_id is not None:
         q = q.where(Analysis.vacancy_id == vacancy_id)
     a = s.scalar(q.order_by(Analysis.id.desc()).limit(1))
-    return dict(a.output) if a else None
+    if a is None:
+        return None
+    # Outputs made by an older prompt version may miss fields the templates expect.
+    from app.features import FEATURES
+
+    feature = FEATURES.get(kind)
+    if feature is not None:
+        try:
+            return feature.task.output.model_validate(a.output).model_dump(mode="json")
+        except ValidationError:
+            return None
+    return dict(a.output)
 
 
 def pair_context(s: Session, user_id: int, resume, vacancy, *kinds: str) -> dict[str, Any]:

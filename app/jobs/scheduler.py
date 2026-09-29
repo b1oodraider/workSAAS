@@ -10,7 +10,7 @@ from sqlalchemy import select
 
 from app.core.config import get_settings
 from app.core.db import session_scope, utcnow
-from app.models import Job, JobStatus, SavedSearch
+from app.models import Job, JobStatus, SavedSearch, User
 
 log = logging.getLogger(__name__)
 
@@ -22,7 +22,8 @@ def enqueue_due_searches() -> list[int]:
     due: list[tuple[int, int]] = []
     with session_scope() as s:
         searches = s.scalars(
-            select(SavedSearch).where(SavedSearch.enabled.is_(True), SavedSearch.interval_minutes > 0)
+            select(SavedSearch).join(User, User.id == SavedSearch.user_id)
+            .where(SavedSearch.enabled.is_(True), SavedSearch.interval_minutes > 0, User.is_active.is_(True))
         ).all()
         active = {
             (j.payload or {}).get("search_id")

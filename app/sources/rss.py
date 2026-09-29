@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from email.utils import parsedate_to_datetime
@@ -18,6 +19,8 @@ import httpx
 from app.core.http import make_async_client
 from app.core.text import html_to_text
 from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, matches_query
+
+log = logging.getLogger(__name__)
 
 _ATOM = "{http://www.w3.org/2005/Atom}"
 
@@ -88,6 +91,11 @@ class RSSSource(JobSource):
         async with make_async_client(use_proxy=self.cfg.use_proxy) as client:
             results = await asyncio.gather(*(self._load(client, u) for u in feeds),
                                            return_exceptions=True)
+        failed = [r for r in results if isinstance(r, Exception)]
+        for exc in failed:
+            log.warning("rss feed failed: %s", exc)
+        if failed and len(failed) == len(results):
+            raise SourceError(f"Все RSS-ленты недоступны: {failed[0]}")
         drafts = [d for r in results if isinstance(r, list) for d in r]
         need_all = bool(self.cfg.options.get("match_all_words"))
         found = [d for d in drafts

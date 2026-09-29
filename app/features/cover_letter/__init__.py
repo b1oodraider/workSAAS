@@ -3,13 +3,11 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import select
-
 from app.features import register
+from app.features._shared import latest_output
 from app.features.base import AnalysisFeature, feature_dir
 from app.features.cover_letter.schema import CoverLetter
 from app.llm.tasks import LLMTask
-from app.models import Analysis
 
 
 class CoverLetterParams(BaseModel):
@@ -26,14 +24,7 @@ class CoverLetterParams(BaseModel):
 
 def _context(session, user_id, resume, vacancy, params) -> dict:
     """Reuse the latest match analysis (if any) so the letter hits the right points."""
-    match = session.scalar(
-        select(Analysis)
-        .where(Analysis.user_id == user_id, Analysis.kind == "match",
-               Analysis.resume_id == resume.id, Analysis.vacancy_id == vacancy.id)
-        .order_by(Analysis.id.desc())
-        .limit(1)
-    )
-    return {"match": match.output if match else None}
+    return {"match": latest_output(session, user_id, "match", resume_id=resume.id, vacancy_id=vacancy.id)}
 
 
 FEATURE = register(

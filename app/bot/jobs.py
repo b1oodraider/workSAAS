@@ -63,6 +63,8 @@ async def _run(ctx: JobContext, body) -> dict:
     try:
         return await body()
     except (JobError, LLMError, NotFound, ValidationFailed) as exc:
+        if getattr(exc, "retryable", False) and not ctx.final_attempt:
+            raise  # the queue will retry; tell the user only if it finally fails
         await _notify(chat_id, "Не получилось: " + esc(clip(user_message(exc), 500)))
         if isinstance(exc, (NotFound, ValidationFailed)):
             raise JobError(str(exc) or "Не найдено") from exc
