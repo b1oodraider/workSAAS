@@ -20,15 +20,24 @@ class BotRunner:
     def __init__(self, api: TelegramAPI) -> None:
         self.api = api
         self._stop = asyncio.Event()
+        self._conflict = False
 
     async def run(self) -> None:
-        try:
-            me = await self.api.get_me()
-            await self.api.set_commands([c for c in menu_commands() if c[0] != "start"])
-            log.info("telegram bot @%s started", me.get("username"))
-        except TelegramError as exc:
-            log.error("telegram bot disabled: %s", exc)
-            return
+        backoff = 5.0
+        while not self._stop.is_set():
+            try:
+                me = await self.api.get_me()
+                await self.api.set_commands([c for c in menu_commands() if c[0] != "start"])
+                log.info("telegram bot @%s started", me.get("username"))
+                break
+            except TelegramError as exc:
+                if exc.code == 401:
+                    log.error("telegram bot disabled: invalid token")
+                    return
+                log.warning("telegram not reachable yet (%s), retry in %.0fs", exc, backoff)
+                await self._sleep(backoff)
+                backoff = min(backoff * 2, 300)
+        self._conflict = False
         await asyncio.gather(self._poll(), self._digests())
 
     async def _poll(self) -> None:
@@ -38,22 +47,37 @@ class BotRunner:
             try:
                 updates = await self.api.get_updates(offset, timeout=30)
                 backoff = 1.0
+                self._conflict = False
             except TelegramError as exc:
+                # 409: another process polls this token — pause pushes too, or users get duplicates.
+                self._conflict = exc.conflict
                 log.warning("getUpdates failed: %s", exc)
                 await self._sleep(backoff)
                 backoff = min(backoff * 2, 60)
                 continue
-            for update in updates:
-                offset = update["update_id"] + 1
+            except Exception:  # noqa: BLE001 - never let the poll loop die
+                log.exception("getUpdates crashed")
+                await self._sleep(backoff)
+                continue
+            for update in updates if isinstance(updates, list) else []:
                 try:
+                    offset = int(update["update_id"]) + 1
                     await handle_update(self.api, update)
                 except Exception:  # noqa: BLE001 - one bad update must not stop the bot
-                    log.exception("failed to handle update %s", update.get("update_id"))
+                    log.exception("failed to handle an update")
+            if updates:
+                # Confirm the batch right away so a restart doesn't replay handled updates.
+                try:
+                    await self.api.get_updates(offset, timeout=0)
+                except TelegramError:
+                    pass
 
     async def _digests(self) -> None:
         interval = get_settings().telegram.digest_interval_s
         while not self._stop.is_set():
             await self._sleep(interval)
+            if self._conflict:
+                continue
             for tick in (send_digests, send_reminders):
                 try:
                     await tick(self.api)

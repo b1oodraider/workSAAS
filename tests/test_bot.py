@@ -185,3 +185,97 @@ async def test_tracker_reminder_and_follow_up(user_id, linked, tg):
     await handle_update(tg.api, cb(f"fu:{vid}"))
     await drain()
     assert "Напоминаю о себе" in tg.sent()[-1]["text"]
+
+
+async def test_bot_token_never_reaches_logs(tg, caplog):
+    import logging
+
+    from app.bot.api import RedactTokenFilter, silence_http_logs
+
+    silence_http_logs()
+    assert logging.getLogger("httpx").level == logging.WARNING
+    record = logging.LogRecord("x", logging.INFO, "", 0,
+                               "POST https://api.telegram.org/bot7701159678:AAAAAAAAAAAAAAAAAAAAAAAAAA/getUpdates",
+                               (), None)
+    RedactTokenFilter().filter(record)
+    assert "AAAAAAAAAAAAAAAAAAAAAAAAAA" not in record.getMessage() and "bot<redacted>" in record.getMessage()
+
+
+class FlakyTelegram(FakeTelegram):
+    def __init__(self, error_code: int | None) -> None:
+        super().__init__()
+        self.error_code = error_code
+
+    def handler(self, request):
+        method = request.url.path.rsplit("/", 1)[-1]
+        if method == "sendMessage" and self.error_code:
+            self.calls.append((method, {}))
+            return httpx.Response(self.error_code, json={"ok": False, "error_code": self.error_code,
+                                                         "description": "boom"})
+        return super().handler(request)
+
+
+def _good_match(user_id, vid):
+    with session_scope() as s:
+        s.query(UserVacancy).update({"notified_at": None})
+        s.add(Analysis(user_id=user_id, kind="match", vacancy_id=vid, output={"summary": "&" * 1000},
+                       score=95, provider="fake", model="m", prompt_version="2"))
+
+
+@pytest.mark.parametrize("code,expect_notified,expect_linked", [
+    (500, False, True),   # transient: claim released, retried next tick
+    (400, True, True),    # bad request: claim kept, no infinite retry
+    (403, True, False),   # bot blocked by user: chat unlinked
+])
+async def test_digest_error_handling(user_id, env, code, expect_notified, expect_linked):
+    fake = FlakyTelegram(code)
+    api = TelegramAPI("123:TEST", transport=httpx.MockTransport(fake.handler))
+    with session_scope() as s:
+        s.get(User, user_id).telegram_chat_id = CHAT
+        vid = vacancy_svc.create_manual(s, user_id, title="T" * 500, text=VACANCY_TEXT).id
+    _good_match(user_id, vid)
+    assert await send_digests(api) == 0
+    with session_scope() as s:
+        assert (s.query(UserVacancy).one().notified_at is not None) == expect_notified
+        assert (s.get(User, user_id).telegram_chat_id is not None) == expect_linked
+
+
+async def test_digest_fits_telegram_limit_and_is_not_sent_twice(user_id, tg):
+    from app.bot.api import MAX_TEXT
+
+    with session_scope() as s:
+        s.get(User, user_id).telegram_chat_id = CHAT
+        ids = [vacancy_svc.create_manual(s, user_id, title=f"Вакансия {i} " + "Ж" * 300,
+                                         text=VACANCY_TEXT + str(i)).id for i in range(10)]
+    with session_scope() as s:
+        for vid in ids:
+            s.add(Analysis(user_id=user_id, kind="match", vacancy_id=vid, output={"summary": "<&>" * 200},
+                           score=90, provider="fake", model="m", prompt_version="2"))
+    assert await send_digests(tg.api) == 1
+    text = tg.sent()[-1]["text"]
+    assert len(text) <= MAX_TEXT and tg.sent()[-1].get("parse_mode") == "HTML"
+    assert "&lt;&amp;&gt;" in text
+    # the rest arrives on the next ticks, each message within the limit, nothing repeated
+    seen = set()
+    for _ in range(10):
+        if not await send_digests(tg.api):
+            break
+        assert len(tg.sent()[-1]["text"]) <= MAX_TEXT
+    for p in tg.sent():
+        for row in json.loads(p["reply_markup"])["inline_keyboard"]:
+            data = row[0]["callback_data"]
+            assert data not in seen
+            seen.add(data)
+    with session_scope() as s:
+        assert s.query(UserVacancy).filter(UserVacancy.notified_at.is_(None)).count() == 0
+    assert len(seen) == 10
+
+
+def test_local_time_conversion(env):
+    from datetime import datetime
+
+    from app.core.db import from_local, to_local
+
+    env.timezone = "Europe/Moscow"
+    utc = from_local(datetime(2026, 9, 29, 12, 0))
+    assert utc == datetime(2026, 9, 29, 9, 0) and to_local(utc) == datetime(2026, 9, 29, 12, 0)

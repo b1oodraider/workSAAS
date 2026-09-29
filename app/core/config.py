@@ -166,6 +166,8 @@ class Settings(BaseSettings):
     proxy_url: str | None = None
     # Language for LLM outputs (cover letters, reviews).
     output_language: str = "русский"
+    # Times are stored in UTC; the UI shows and accepts them in this time zone.
+    timezone: str = "Europe/Moscow"
     default_monthly_budget_usd: float = 10.0
     # Set true when the app is served over HTTPS (VPS behind Caddy/nginx): Secure cookie.
     session_https_only: bool = False

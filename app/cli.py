@@ -127,6 +127,9 @@ def cmd_bot(_args) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    from app.bot.api import silence_http_logs
+
+    silence_http_logs()
     parser = argparse.ArgumentParser(prog="worksaas")
     sub = parser.add_subparsers(dest="cmd", required=True)
 

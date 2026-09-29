@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.plugins import load_all
-from app.bot.api import get_api
+from app.bot.api import get_api, silence_http_logs
 from app.bot.runner import BotRunner
 from app.core.config import get_settings
 from app.core.db import get_engine
@@ -30,6 +30,7 @@ log = logging.getLogger(__name__)
 
 def create_app(*, start_background: bool | None = None) -> FastAPI:
     load_all()
+    silence_http_logs()
     settings = get_settings()
     secret_key = settings.secret_key
     if secret_key in ("", "change-me"):
@@ -59,6 +60,9 @@ def create_app(*, start_background: bool | None = None) -> FastAPI:
         for task in tasks[2:]:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
+        api = get_api()
+        if api is not None:
+            await api.close()
 
     app = FastAPI(title="workSAAS", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax",

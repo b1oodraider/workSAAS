@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 
-from app.bot.api import TelegramAPI, button, esc, keyboard, url_button
+from app.bot.api import TelegramAPI, button, clip, esc, keyboard, url_button
 from app.bot.texts import VERDICTS, salary, web_url
 from app.core.config import get_settings
 from app.core.db import session_scope
@@ -127,6 +127,10 @@ async def _handle_callback(api: TelegramAPI, cq: dict[str, Any]) -> None:
         await handler(ctx)
     except (NotFound, ValidationFailed, ValueError):
         await api.answer_callback(cq["id"], "Не найдено")
+    except Exception:
+        # Always stop the button spinner, then let the runner log the error.
+        await api.answer_callback(cq["id"], "Ошибка, попробуйте позже")
+        raise
 
 
 async def _not_linked(ctx: Ctx) -> None:
@@ -194,8 +198,8 @@ async def cmd_top(ctx: Ctx) -> None:
         lines, kb = ["<b>Лучшие совпадения</b>"], []
         for i, (v, a) in enumerate(rows, 1):
             lines.append(f"{i}. <b>{esc(int(a.score or 0))}</b> — "
-                         f'<a href="{esc(web_url(f"/vacancies/{v.id}"))}">{esc(v.title)}</a>'
-                         f" · {esc(v.company or '')} · {esc(salary(v))}")
+                         f'<a href="{esc(web_url(f"/vacancies/{v.id}"))}">{esc(clip(v.title, 120))}</a>'
+                         f" · {esc(clip(v.company or '', 80))} · {esc(salary(v))}")
             kb.append([button(f"✉️ Письмо №{i}", f"cl:{v.id}"), button(f"🙈 Скрыть №{i}", f"st:hidden:{v.id}")])
     await ctx.reply("\n".join(lines), keyboard(*kb))
 
@@ -239,7 +243,8 @@ async def cmd_notify(ctx: Ctx) -> None:
             user.notify_min_score = int(arg)
             msg = f"Буду присылать вакансии с оценкой от {int(arg)}."
         else:
-            current = user.notify_min_score or get_settings().telegram.notify_min_score
+            current = (user.notify_min_score if user.notify_min_score is not None
+                       else get_settings().telegram.notify_min_score)
             msg = (f"Сейчас порог: {'выкл' if current > 100 else current}. "
                    "Пример: /notify 80 или /notify off")
     await ctx.reply(msg)

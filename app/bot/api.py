@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -17,12 +18,57 @@ MAX_TEXT = 4096
 
 
 class TelegramError(Exception):
-    pass
+    def __init__(self, message: str, *, code: int | None = None) -> None:
+        super().__init__(message)
+        self.code = code
+
+    @property
+    def permanent(self) -> bool:
+        """The request itself is wrong (bad HTML, chat blocked the bot): retrying won't help."""
+        return self.code in (400, 403)
+
+    @property
+    def conflict(self) -> bool:
+        """Another process is polling the same bot token."""
+        return self.code == 409
 
 
 def esc(value: Any) -> str:
     """Escape text for parse_mode=HTML. All third-party/user text must go through this."""
-    return html.escape(str(value if value is not None else ""), quote=False)
+    return html.escape(str(value if value is not None else ""), quote=True)
+
+
+def clip(value: Any, limit: int) -> str:
+    """Shorten PLAIN text before escaping (cutting escaped HTML would break entities)."""
+    text = str(value if value is not None else "")
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def html_to_plain(text: str) -> str:
+    return html.unescape(_TAG_RE.sub("", text))
+
+
+_TOKEN_RE = re.compile(r"bot\d{5,}:[\w-]{20,}")
+
+
+class RedactTokenFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        msg = record.getMessage()
+        if _TOKEN_RE.search(msg):
+            record.msg, record.args = _TOKEN_RE.sub("bot<redacted>", msg), ()
+        return True
+
+
+def silence_http_logs() -> None:
+    """httpx logs request URLs at INFO, and Bot API URLs contain the bot token."""
+    for name in ("httpx", "httpcore"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+    for handler in logging.getLogger().handlers:
+        if not any(isinstance(f, RedactTokenFilter) for f in handler.filters):
+            handler.addFilter(RedactTokenFilter())
 
 
 def button(text: str, data: str) -> dict[str, str]:
@@ -61,9 +107,11 @@ class TelegramAPI:
         try:
             body = resp.json()
         except ValueError:
-            raise TelegramError(f"{method}: HTTP {resp.status_code}") from None
-        if not body.get("ok"):
-            raise TelegramError(f"{method}: {body.get('description', resp.status_code)}")
+            raise TelegramError(f"{method}: HTTP {resp.status_code}", code=resp.status_code) from None
+        if not isinstance(body, dict) or not body.get("ok"):
+            desc = body.get("description", resp.status_code) if isinstance(body, dict) else resp.status_code
+            code = body.get("error_code", resp.status_code) if isinstance(body, dict) else resp.status_code
+            raise TelegramError(f"{method}: {desc}", code=code)
         return body.get("result")
 
     async def get_me(self) -> dict[str, Any]:
@@ -78,7 +126,12 @@ class TelegramAPI:
     async def send(self, chat_id: int, text: str, *, reply_markup: dict[str, Any] | None = None,
                    disable_preview: bool = True) -> dict[str, Any]:
         if len(text) > MAX_TEXT:
-            text = text[: MAX_TEXT - 20] + "\n…"
+            # Messages are built to fit; if one doesn't, send it as plain text rather than
+            # cutting HTML in the middle of a tag or entity.
+            plain = html_to_plain(text)
+            return await self.call("sendMessage", chat_id=chat_id, text=clip(plain, MAX_TEXT),
+                                   reply_markup=reply_markup,
+                                   link_preview_options={"is_disabled": disable_preview})
         return await self.call("sendMessage", chat_id=chat_id, text=text, parse_mode="HTML",
                                reply_markup=reply_markup,
                                link_preview_options={"is_disabled": disable_preview})

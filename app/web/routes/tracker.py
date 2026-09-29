@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.core.db import from_local
 from app.services import vacancies as vacancy_svc
 from app.services.errors import ValidationFailed
 from app.web.deps import CurrentUser, current_user, db, safe_path
@@ -24,7 +25,7 @@ def tracker_page(request: Request, user: CurrentUser = Depends(current_user), s:
 def next_action(vacancy_id: int, request: Request, when: str = Form(""), note: str = Form(""),
                 back: str = Form(""), user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
     try:
-        moment = datetime.fromisoformat(when) if when else None
+        moment = from_local(datetime.fromisoformat(when)) if when else None
     except ValueError:
         flash(request, "Некорректная дата", "error")
         return RedirectResponse(safe_path(back, f"/vacancies/{vacancy_id}"), status_code=303)

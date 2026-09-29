@@ -146,7 +146,7 @@ def set_status(s: Session, user_id: int, vacancy_id: int, status: str, notes: st
         uv.next_action_note = "Нет ответа? Напомнить о себе"
     elif new in (UserVacancyStatus.interview, UserVacancyStatus.offer):
         uv.next_action_at, uv.next_action_note = None, ""
-    elif new in (UserVacancyStatus.rejected, UserVacancyStatus.hidden):
+    else:  # rejected, hidden, or back to new/saved: nothing to follow up on
         uv.next_action_at, uv.next_action_note = None, ""
     uv.reminded_at = None
 
@@ -181,7 +181,9 @@ def tracker(s: Session, user_id: int) -> dict:
         return sum(1 for uv in rows if any(h.get("status") == status for h in uv.status_history or [])
                    or uv.status.value == status)
 
-    applied = reached("applied")
+    # Rows created before history was tracked may have reached "interview" without an
+    # "applied" record: every interview/offer implies an application.
+    applied = max(reached("applied"), reached("interview"), reached("offer"))
     return {
         "columns": columns,
         "due": [uv for uv in rows if uv.next_action_at and uv.next_action_at <= utcnow()],

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.bot.api import esc
+from app.bot.api import clip, esc
 from app.core.config import get_settings
 from app.models import Vacancy
 
@@ -28,8 +28,8 @@ def salary(v: Vacancy) -> str:
 
 
 def vacancy_header(v: Vacancy) -> str:
-    parts = [f"<b>{esc(v.title)}</b>"]
-    meta = " · ".join(esc(x) for x in (v.company, v.location, salary(v)) if x)
+    parts = [f"<b>{esc(clip(v.title, 200))}</b>"]
+    meta = " · ".join(esc(clip(x, 80)) for x in (v.company, v.location, salary(v)) if x)
     if meta:
         parts.append(meta)
     return "\n".join(parts)
@@ -38,18 +38,19 @@ def vacancy_header(v: Vacancy) -> str:
 def match_block(m: dict[str, Any]) -> str:
     lines = [f"🎯 <b>{esc(m.get('score'))}/100</b> — {esc(VERDICTS.get(m.get('verdict'), m.get('verdict')))}, "
              f"{esc(RECOMMEND.get(m.get('recommendation'), ''))}",
-             esc(m.get("summary", ""))]
-    gaps = [g.get("requirement") for g in m.get("gaps") or [] if g.get("importance") == "must"]
+             esc(clip(m.get("summary", ""), 600))]
+    gaps = [str(g.get("requirement") or "") for g in m.get("gaps") or []
+            if isinstance(g, dict) and g.get("importance") == "must"]
     if gaps:
-        lines.append("Пробелы: " + esc(", ".join(gaps[:4])))
+        lines.append("Пробелы: " + esc(clip(", ".join(gaps[:4]), 300)))
     return "\n".join(lines)
 
 
 def review_block(r: dict[str, Any]) -> str:
-    lines = [f"🔎 Вакансия: <b>{esc(r.get('overall_score'))}/100</b>. {esc(r.get('summary', ''))}"]
-    flags = [f for f in r.get("red_flags") or [] if f.get("severity") in ("high", "medium")]
+    lines = [f"🔎 Вакансия: <b>{esc(r.get('overall_score'))}/100</b>. {esc(clip(r.get('summary', ''), 500))}"]
+    flags = [f for f in r.get("red_flags") or [] if isinstance(f, dict) and f.get("severity") in ("high", "medium")]
     for f in flags[:3]:
-        lines.append(f"🚩 {esc(f.get('text'))}")
+        lines.append(f"🚩 {esc(clip(f.get('text'), 200))}")
     return "\n".join(lines)
 
 

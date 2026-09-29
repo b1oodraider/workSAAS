@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import update
 
-from app.bot.api import TelegramError, esc, get_api
+from app.bot.api import TelegramError, clip, esc, get_api
 from app.bot.handlers import vacancy_keyboard
 from app.bot.texts import vacancy_card
 from app.core.db import session_scope, utcnow
@@ -46,9 +46,12 @@ async def _run(ctx: JobContext, body) -> dict:
     try:
         return await body()
     except (JobError, LLMError, NotFound, ValidationFailed) as exc:
-        await _notify(chat_id, f"Не получилось: {esc(exc) or 'объект не найден'}")
+        await _notify(chat_id, f"Не получилось: {esc(clip(exc, 500)) or 'объект не найден'}")
         if isinstance(exc, (NotFound, ValidationFailed)):
             raise JobError(str(exc) or "Не найдено") from exc
+        raise
+    except Exception:
+        await _notify(chat_id, "Не получилось: внутренняя ошибка. Попробуйте ещё раз позже.")
         raise
 
 
@@ -101,9 +104,10 @@ async def bot_letter(ctx: JobContext) -> dict:
         a = await analysis_svc.run_analysis(ctx.user_id, kind, resume_id=resume_id,
                                             vacancy_id=vacancy_id, params=ctx.payload.get("params"))
         o = a.output
-        parts = [f"✉️ <b>{esc(o.get('subject', ''))}</b>", f"<pre>{esc(o.get('body', ''))}</pre>"]
+        parts = [f"✉️ <b>{esc(clip(o.get('subject', ''), 200))}</b>",
+                 f"<pre>{esc(clip(o.get('body', ''), 3000))}</pre>"]
         if o.get("warnings"):
-            parts.append("Перед отправкой:\n" + "\n".join(f"• {esc(w)}" for w in o["warnings"][:5]))
+            parts.append("Перед отправкой:\n" + "\n".join(f"• {esc(clip(w, 150))}" for w in o["warnings"][:4]))
         await _notify(ctx.payload["chat_id"], "\n\n".join(parts), vacancy_keyboard(vacancy_id))
         return {"analysis_id": a.id, "result_url": f"/analyses/{a.id}"}
 

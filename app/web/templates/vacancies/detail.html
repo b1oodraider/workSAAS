@@ -18,7 +18,7 @@
     </form>
     {% if uv.applied_at %}<p class="muted">Отклик: {{ uv.applied_at|dt }}</p>{% endif %}
     <form method="post" action="/vacancies/{{ vacancy.id }}/next-action" class="row">
-      <input type="datetime-local" name="when" style="flex:1" value="{{ uv.next_action_at.strftime('%Y-%m-%dT%H:%M') if uv.next_action_at else '' }}">
+      <input type="datetime-local" name="when" style="flex:1" value="{{ uv.next_action_at|dt_input }}">
       <input type="text" name="note" style="flex:2" placeholder="Следующий шаг: написать HR, тестовое до…" value="{{ uv.next_action_note }}">
       <button class="btn-small secondary">Напомнить</button>
     </form>

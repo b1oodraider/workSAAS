@@ -29,8 +29,8 @@
     {% for uv in items %}{% set v = uv.vacancy %}
       <div class="tile">
         <a href="/vacancies/{{ v.id }}">{{ v.title }}</a>
-        <div class="muted">{{ v.company or "" }}{% if uv.applied_at %} · отклик {{ uv.applied_at.strftime("%d.%m") }}{% endif %}</div>
-        {% if uv.next_action_at %}<div class="muted">⏰ {{ uv.next_action_at.strftime("%d.%m") }} {{ uv.next_action_note }}</div>{% endif %}
+        <div class="muted">{{ v.company or "" }}{% if uv.applied_at %} · отклик {{ uv.applied_at|day }}{% endif %}</div>
+        {% if uv.next_action_at %}<div class="muted">⏰ {{ uv.next_action_at|day }} {{ uv.next_action_note }}</div>{% endif %}
       </div>
     {% else %}<p class="muted">пусто</p>{% endfor %}
   </div>

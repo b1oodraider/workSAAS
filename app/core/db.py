@@ -18,6 +18,26 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def _tz():
+    from zoneinfo import ZoneInfo
+
+    return ZoneInfo(get_settings().timezone)
+
+
+def to_local(value: datetime | None) -> datetime | None:
+    """Naive UTC (as stored) -> naive local time for display."""
+    if value is None:
+        return None
+    return value.replace(tzinfo=timezone.utc).astimezone(_tz()).replace(tzinfo=None)
+
+
+def from_local(value: datetime) -> datetime:
+    """Local time from a form (naive or aware) -> naive UTC for storage."""
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=_tz())
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 class Base(DeclarativeBase):
     pass
 

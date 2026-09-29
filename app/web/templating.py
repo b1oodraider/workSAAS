@@ -11,6 +11,7 @@ from fastapi import Request
 from fastapi.templating import Jinja2Templates
 from jinja2 import ChoiceLoader, FileSystemLoader
 
+from app.core.db import to_local
 from app.features import FEATURES
 
 WEB_DIR = Path(__file__).parent
@@ -50,7 +51,19 @@ def money(v: Any) -> str:
 
 
 def dt(value: datetime | None) -> str:
-    return value.strftime("%d.%m.%Y %H:%M") if value else "—"
+    local = to_local(value)
+    return local.strftime("%d.%m.%Y %H:%M") if local else "—"
+
+
+def day(value: datetime | None) -> str:
+    local = to_local(value)
+    return local.strftime("%d.%m") if local else ""
+
+
+def dt_input(value: datetime | None) -> str:
+    """Value for <input type=datetime-local> in the configured time zone."""
+    local = to_local(value)
+    return local.strftime("%Y-%m-%dT%H:%M") if local else ""
 
 
 def safe_url(value: str | None) -> str:
@@ -59,7 +72,8 @@ def safe_url(value: str | None) -> str:
 
 
 templates.env.globals["FEATURES"] = FEATURES
-templates.env.filters.update(score_class=score_class, money=money, dt=dt, safe_url=safe_url,
+templates.env.filters.update(score_class=score_class, money=money, dt=dt, day=day, dt_input=dt_input,
+                             safe_url=safe_url,
                              tojson_pretty=lambda v: json.dumps(v, ensure_ascii=False, indent=2))
 
 
