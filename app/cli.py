@@ -4,6 +4,7 @@
     worksaas create-user alice [--admin] [--budget 5]
     worksaas set-password alice
     worksaas set-budget alice 10
+    worksaas backup [path]     # consistent SQLite copy, safe while running
     worksaas run [--host 127.0.0.1] [--port 8000]
     worksaas worker            # separate worker process (if jobs.run_in_web_process=false)
     worksaas bot               # Telegram bot only (if it doesn't run inside the web process)
@@ -90,6 +91,30 @@ def cmd_set_budget(args) -> None:
     print("Бюджет обновлён (0 = без лимита)")
 
 
+def cmd_backup(args) -> None:
+    """Consistent copy of the SQLite database while the app keeps running."""
+    import sqlite3
+    from datetime import datetime
+
+    from app.core.config import get_settings
+
+    url = get_settings().database_url
+    if not url.startswith("sqlite:///"):
+        sys.exit("backup поддерживает только SQLite; для Postgres используйте pg_dump")
+    src_path = Path(url.split("///", 1)[1])
+    if not src_path.exists():
+        sys.exit(f"База не найдена: {src_path}")
+    target = Path(args.path) if args.path else src_path.parent / "backups" / (
+        f"worksaas-{datetime.now():%Y%m%d-%H%M%S}.db")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    src, dst = sqlite3.connect(src_path), sqlite3.connect(target)
+    with dst:
+        src.backup(dst)
+    src.close()
+    dst.close()
+    print(f"Копия базы: {target}")
+
+
 def cmd_run(args) -> None:
     import uvicorn
 
@@ -151,6 +176,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("username")
     p.add_argument("usd", type=float)
     p.set_defaults(fn=cmd_set_budget)
+
+    p = sub.add_parser("backup", help="копия базы SQLite (можно на работающем приложении)")
+    p.add_argument("path", nargs="?", help="куда сохранить; по умолчанию data/backups/")
+    p.set_defaults(fn=cmd_backup)
 
     p = sub.add_parser("run")
     p.add_argument("--host", default="127.0.0.1")

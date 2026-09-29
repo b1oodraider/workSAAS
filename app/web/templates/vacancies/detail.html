@@ -17,6 +17,15 @@
       <button class="btn-small">Сохранить статус</button>
     </form>
     {% if uv.applied_at %}<p class="muted">Отклик: {{ uv.applied_at|dt }}</p>{% endif %}
+    {% set hint = {"interview": ("interview_prep", "Скоро собеседование — подготовьтесь:"),
+                   "offer": ("offer_negotiation", "Есть оффер — разберите условия перед ответом:"),
+                   "applied": ("follow_up", "Нет ответа неделю? Напомните о себе:")}.get(uv.status.value) %}
+    {% if hint and resumes %}
+      {% for f, fields in pair_features if f.kind == hint[0] %}
+        <div class="hint"><b>{{ hint[1] }}</b>
+        {{ feature_form(f, fields, "/vacancies/" ~ vacancy.id, vacancy_id=vacancy.id, resumes=resumes) }}</div>
+      {% endfor %}
+    {% endif %}
     <details {% if uv.next_action_at %}open{% endif %}><summary>Напомнить о следующем шаге{% if uv.next_action_at %}: {{ uv.next_action_at|dt }}{% endif %}</summary>
     <form method="post" action="/vacancies/{{ vacancy.id }}/next-action">
       <label>Когда <input type="datetime-local" name="when" value="{{ uv.next_action_at|dt_input }}"></label>

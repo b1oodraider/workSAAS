@@ -145,6 +145,7 @@ worksaas init-db                     применить миграции
 worksaas create-user NAME [--admin] [--budget USD]
 worksaas set-password NAME
 worksaas set-budget NAME USD         0 = без лимита
+worksaas backup [путь]               копия базы (по умолчанию data/backups/), можно на ходу
 ```
 
 ## Разработка

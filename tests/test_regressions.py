@@ -317,3 +317,14 @@ def test_example_config_loads(monkeypatch):
     assert set(settings.sources) <= set(SOURCE_CLASSES)
     assert build_provider("fake", settings.llm.providers["fake"])
     assert json.dumps(settings.model_dump(mode="json"))
+
+
+def test_backup_command(tmp_path, env, user_id):
+    import sqlite3
+
+    from app.cli import main
+
+    env.database_url = f"sqlite:///{tmp_path / 'test.db'}"
+    target = tmp_path / "copy.db"
+    main(["backup", str(target)])
+    assert sqlite3.connect(target).execute("SELECT username FROM users").fetchone() == ("alice",)
