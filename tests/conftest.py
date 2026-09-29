@@ -31,6 +31,7 @@ VACANCY_TEXT = """Ищем Python-разработчика в команду п�
 @pytest.fixture(autouse=True)
 def env(tmp_path):
     settings = get_settings()
+    snapshot = settings.model_copy(deep=True)  # tests mutate settings; restore afterwards
     settings.llm.routes = {"default": LLMRoute(provider="fake", model="fake-model")}
     settings.default_monthly_budget_usd = 0
     settings.telegram.bot_token = None  # never talk to the real Telegram from tests
@@ -43,6 +44,8 @@ def env(tmp_path):
     set_gateway(LLMGateway(settings))
     yield settings
     set_gateway(None)
+    for field in type(settings).model_fields:
+        setattr(settings, field, getattr(snapshot, field))
 
 
 @pytest.fixture

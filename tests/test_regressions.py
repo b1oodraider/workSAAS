@@ -148,7 +148,7 @@ async def test_budget_stops_bulk_matching(env, user_id, resume_id, monkeypatch):
     with session_scope() as s:
         matches = s.scalars(select(Analysis).where(Analysis.kind == "match")).all()
         failed = s.scalars(select(Job).where(Job.kind == "analysis", Job.status == JobStatus.failed)).all()
-    assert len(matches) == 1 and len(failed) == 2 and all("бюджет" in j.error for j in failed)
+    assert len(matches) == 1 and len(failed) == 2 and all("бюджет" in j.error for j in failed), [(j.status, j.error) for j in failed]
 
 
 async def test_budget_resets_monthly(env, user_id):
