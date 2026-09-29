@@ -1,0 +1,48 @@
+{# Generic form for any AnalysisFeature: hidden subject ids + params fields. #}
+{% macro feature_form(feature, fields, back, resume_id=None, vacancy_id=None, resumes=None, button=None) %}
+<form method="post" action="/analyses" class="feature">
+  <input type="hidden" name="kind" value="{{ feature.kind }}">
+  <input type="hidden" name="back" value="{{ back }}">
+  {% if resume_id %}<input type="hidden" name="resume_id" value="{{ resume_id }}">{% endif %}
+  {% if vacancy_id %}<input type="hidden" name="vacancy_id" value="{{ vacancy_id }}">{% endif %}
+  <div class="row"><b>{{ feature.title }}</b> <span class="muted">{{ feature.description }}</span></div>
+  {% if resumes is not none %}
+    <label>Резюме
+      <select name="resume_id" required>
+        {% for r in resumes %}<option value="{{ r.id }}">{{ r.title }}</option>{% endfor %}
+      </select>
+    </label>
+  {% endif %}
+  {% if fields %}
+  <details><summary>Параметры</summary>
+  {% for f in fields %}
+    {% if f.type == "select" %}
+      <label>{{ f.title }}
+        <select name="p_{{ f.name }}">{% for o in f.options %}<option {% if o == f.default %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+      </label>
+    {% elif f.type == "checkbox" %}
+      <label class="check"><input type="checkbox" name="p_{{ f.name }}" {% if f.default %}checked{% endif %}> {{ f.title }}</label>
+    {% else %}
+      <label>{{ f.title }} <input type="{{ f.type }}" name="p_{{ f.name }}" value="{{ f.default }}"></label>
+    {% endif %}
+  {% endfor %}
+  </details>
+  {% endif %}
+  <p><button class="btn-small">{{ button or "Запустить" }}</button></p>
+</form>
+{% endmacro %}
+
+{% macro analysis_card(a, feature, link=True) %}
+<div class="card">
+  <div class="row">
+    <b>{{ feature.title if feature else a.kind }}</b>
+    <span class="muted">{{ a.created_at|dt }} · {{ a.model }}</span>
+    {% if link %}<a href="/analyses/{{ a.id }}">открыть</a>{% endif %}
+  </div>
+  {% if feature %}
+    {% with o = a.output %}{% include feature.view_template %}{% endwith %}
+  {% else %}
+    <pre class="pre">{{ a.output|tojson_pretty }}</pre>
+  {% endif %}
+</div>
+{% endmacro %}

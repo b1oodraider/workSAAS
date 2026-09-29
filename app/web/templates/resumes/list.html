@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Резюме</h1>
+{% if resumes %}
+<div class="card">
+<table>
+  <tr><th>Название</th><th>Создано</th><th></th></tr>
+  {% for r in resumes %}
+  <tr><td><a href="/resumes/{{ r.id }}">{{ r.title }}</a></td><td class="muted">{{ r.created_at|dt }}</td>
+      <td><a href="/searches?resume_id={{ r.id }}">подобрать вакансии</a></td></tr>
+  {% endfor %}
+</table>
+</div>
+{% endif %}
+<div class="card">
+  <h2>Добавить резюме</h2>
+  <form method="post" action="/resumes" enctype="multipart/form-data">
+    <label>Название <input type="text" name="title" placeholder="Например: Python backend"></label>
+    <label>Файл (PDF, DOCX, TXT) <input type="file" name="file" accept=".pdf,.docx,.txt,.md"></label>
+    <label>…или текст резюме <textarea name="text" rows="10"></textarea></label>
+    <label>Пожелания (чего хочется и чего нет — это учитывается при подборе и оценке)
+      <textarea name="preferences" rows="3" placeholder="Только удалёнка, финтех или e-commerce, без 1С и гемблинга, от 250 000 ₽"></textarea></label>
+    <p><button>Сохранить</button></p>
+  </form>
+</div>
+{% endblock %}

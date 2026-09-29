@@ -1,0 +1,7 @@
+<p><b>{{ o.headline }}</b> · грейд: {{ o.seniority }}{% if o.years_experience %} · опыт ≈ {{ o.years_experience }} лет{% endif %} · формат: {{ o.work_format }}</p>
+<p><b>Роли:</b> {{ o.roles|join(", ") }}</p>
+<p><b>Ключевые навыки:</b> {{ o.skills|selectattr("level","equalto","core")|map(attribute="name")|join(", ") }}</p>
+<p><b>Дополнительные:</b> {{ o.skills|selectattr("level","equalto","secondary")|map(attribute="name")|join(", ") }}</p>
+{% if o.domains %}<p><b>Домены:</b> {{ o.domains|join(", ") }}</p>{% endif %}
+<p><b>Поисковые запросы:</b> {% for q in o.search_queries %}<code>{{ q }}</code> {% endfor %}</p>
+{% if o.negative_keywords %}<p><b>Исключать:</b> {{ o.negative_keywords|join(", ") }}</p>{% endif %}

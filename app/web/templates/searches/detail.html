@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>{{ search.name }}</h1>
+<p class="muted">Резюме: <a href="/resumes/{{ resume.id }}">{{ resume.title }}</a> · источники: {{ search.sources|join(", ") }}
+  · последний запуск: {{ search.last_run_at|dt }}
+  {% if search.queries %}· доп. запросы: {{ search.queries|join("; ") }}{% endif %}</p>
+<div class="row">
+  <form method="post" action="/searches/{{ search.id }}/run"><button class="btn-small">Запустить ещё раз</button></form>
+  <a href="?hidden={{ 0 if hidden else 1 }}">{{ "Скрыть скрытые" if hidden else "Показать скрытые" }}</a>
+  <span class="spacer"></span>
+  <form method="post" action="/searches/{{ search.id }}/delete" onsubmit="return confirm('Удалить поиск? Вакансии останутся.')">
+    <button class="danger btn-small">Удалить поиск</button></form>
+</div>
+<div class="card">
+{% if items %}
+<table>
+  <tr><th>ИИ</th><th>Префильтр</th><th>Вакансия</th><th>Зарплата</th><th>Статус</th></tr>
+  {% for it in items %}{% set v = it.vacancy %}{% set m = it.match %}
+  <tr>
+    <td>{% if m %}<a href="/analyses/{{ m.id }}"><span class="score {{ m.score|score_class }}">{{ m.score|int }}</span></a>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="muted">{{ (it.uv.prefilter_score or 0)|round|int }}</td>
+    <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a>
+        <div class="muted">{{ v.company or "" }}{% if v.location %} · {{ v.location }}{% endif %}{% if v.remote %} · удалённо{% endif %}</div>
+        {% if m %}<div>{{ m.output.summary }}</div>{% endif %}</td>
+    <td>{{ v|money }}</td>
+    <td>
+      <form method="post" action="/vacancies/{{ v.id }}/status">
+        <input type="hidden" name="back" value="/searches/{{ search.id }}">
+        <select name="status" onchange="this.form.submit()">
+          {% for k, label in statuses.items() %}<option value="{{ k }}" {% if k == it.uv.status.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Пока пусто. Если поиск только что запущен — загляните в <a href="/jobs">задачи</a>.</p>{% endif %}
+</div>
+{% endblock %}

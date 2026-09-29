@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Подбор вакансий</h1>
+{% if searches %}
+<div class="card">
+<table>
+  <tr><th>Поиск</th><th>Источники</th><th>Автозапуск</th><th>Последний запуск</th></tr>
+  {% for s in searches %}
+  <tr><td><a href="/searches/{{ s.id }}">{{ s.name }}</a></td><td>{{ s.sources|join(", ") }}</td>
+      <td>{% if s.interval_minutes %}каждые {{ s.interval_minutes }} мин{% else %}вручную{% endif %}</td>
+      <td class="muted">{{ s.last_run_at|dt }}</td></tr>
+  {% endfor %}
+</table>
+</div>
+{% endif %}
+
+<div class="card">
+<h2>Новый поиск</h2>
+{% if not resumes %}
+  <p>Сначала <a href="/resumes">добавьте резюме</a>.</p>
+{% else %}
+<form method="post" action="/searches">
+  <div class="cols">
+    <div>
+      <label>Резюме
+        <select name="resume_id">{% for r in resumes %}<option value="{{ r.id }}" {% if preselect == r.id|string %}selected{% endif %}>{{ r.title }}</option>{% endfor %}</select>
+      </label>
+      <label>Название <input type="text" name="name" placeholder="По умолчанию — по названию резюме"></label>
+      <label>Источники</label>
+      {% for src in sources %}<label class="check"><input type="checkbox" name="sources" value="{{ src.name }}" checked> {{ src.title }}</label>{% endfor %}
+      <label>Доп. поисковые запросы (по одному на строку; основные ИИ составит из резюме)
+        <textarea name="queries" rows="3"></textarea></label>
+    </div>
+    <div>
+      <label>Регион (hh.ru area id: 113 — Россия, 1 — Москва, 2 — СПб; пусто — из конфига)
+        <input type="text" name="area"></label>
+      <label>Зарплата от <input type="number" name="salary_min" min="0" step="1000"></label>
+      <label>Опыт
+        <select name="experience">{% for k, v in experience.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      </label>
+      <label>За последние N дней <input type="number" name="period_days" value="14" min="1" max="30"></label>
+      <label class="check"><input type="checkbox" name="remote_only"> Только удалёнка</label>
+      <label>Стоп-слова через запятую <input type="text" name="exclude_words" placeholder="1С, битрикс, гемблинг"></label>
+      <label>Автозапуск
+        <select name="interval_minutes">
+          <option value="0">вручную</option><option value="360">каждые 6 часов</option>
+          <option value="720">каждые 12 часов</option><option value="1440">раз в сутки</option>
+        </select>
+      </label>
+    </div>
+  </div>
+  <p><button>Создать и запустить</button></p>
+  <p class="muted">Как работает: ИИ извлекает из резюме навыки и запросы → вакансии скачиваются из источников →
+    бесплатный префильтр отбирает лучшие → только они (до top_n из конфига) оцениваются ИИ.</p>
+</form>
+{% endif %}
+</div>
+{% endblock %}

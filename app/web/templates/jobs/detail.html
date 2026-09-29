@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+{% set active = job.status.value in ("queued", "running") or pending_children %}
+<h1>{{ job.title or job.kind }}</h1>
+<div class="card"
+     {% if active %}data-job-poll="/jobs/{{ job.id }}/status" data-job-status="{{ job.status.value }}"
+     data-job-finished="{{ children.get('done', 0) + children.get('failed', 0) }}"{% endif %}>
+  <p>Статус: <b class="status-{{ job.status.value }}">{{ {"queued":"в очереди","running":"выполняется","done":"готово","failed":"ошибка"}[job.status.value] }}</b>
+    {% if active %}<span class="spinner"></span>{% endif %}</p>
+  {% if job.status.value in ("queued", "running") %}
+    <p class="muted">Обычно 10–60 секунд. Страница обновится сама.</p>
+  {% endif %}
+  {% if job.error %}<div class="flash flash-error">{{ job.error }}</div>{% endif %}
+  {% if job.result %}
+    {% set r = job.result %}
+    {% if r.queries is defined %}
+      <p>Запросы: {% for q in r.queries %}<code>{{ q }}</code> {% endfor %}</p>
+      <p>Найдено: {{ r.found }} · уникальных после фильтров: {{ r.unique }} · новых: {{ r.new }} · отправлено на оценку ИИ: {{ r.llm_match_enqueued }}</p>
+      {% if r.errors %}<details><summary>Ошибки источников ({{ r.errors|length }})</summary><ul>{% for e in r.errors %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}
+    {% endif %}
+  {% endif %}
+  {% if children %}
+    <p>Оценка вакансий ИИ: готово {{ children.get("done", 0) }}, ошибок {{ children.get("failed", 0) }}, осталось {{ pending_children }}</p>
+  {% endif %}
+  {% if job.result_url %}<p><a class="btn" href="{{ job.result_url }}">Перейти к результату</a></p>{% endif %}
+</div>
+{% endblock %}

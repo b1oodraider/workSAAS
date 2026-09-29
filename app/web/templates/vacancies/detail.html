@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% from "_macros.html" import feature_form, analysis_card %}
+{% block content %}
+<h1>{{ vacancy.title }}</h1>
+<p class="muted">
+  {{ vacancy.company or "" }}{% if vacancy.location %} · {{ vacancy.location }}{% endif %} · {{ vacancy|money }}
+  {% if vacancy.remote %} · удалённо{% endif %}
+  {% if vacancy.url|safe_url %} · <a href="{{ vacancy.url|safe_url }}" target="_blank" rel="noopener noreferrer">открыть на сайте</a>{% endif %}
+</p>
+<div class="cols">
+  <div class="card">
+    <h2>Действия</h2>
+    <form method="post" action="/vacancies/{{ vacancy.id }}/status" class="row">
+      <select name="status" style="flex:1">
+        {% for k, label in statuses.items() %}<option value="{{ k }}" {% if k == uv.status.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <button class="btn-small">Сохранить статус</button>
+    </form>
+    {% for f, fields in vacancy_features %}
+      {{ feature_form(f, fields, "/vacancies/" ~ vacancy.id, vacancy_id=vacancy.id) }}
+    {% endfor %}
+    {% if resumes %}
+      {% for f, fields in pair_features %}
+        {{ feature_form(f, fields, "/vacancies/" ~ vacancy.id, vacancy_id=vacancy.id, resumes=resumes) }}
+      {% endfor %}
+    {% else %}
+      <p class="muted">Загрузите <a href="/resumes">резюме</a>, чтобы оценить соответствие и написать письмо.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Описание</h2>
+    {% if vacancy.skills %}<p><b>Навыки:</b> {{ vacancy.skills|join(", ") }}</p>{% endif %}
+    {% if vacancy.is_partial %}<p class="muted">Показан фрагмент; полное описание загрузится при первом анализе.</p>{% endif %}
+    <div class="pre">{{ vacancy.description }}</div>
+  </div>
+</div>
+<h2>Результаты</h2>
+{% for a in analyses %}{{ analysis_card(a, FEATURES.get(a.kind)) }}{% else %}<p class="muted">Пока ничего не запускали.</p>{% endfor %}
+{% endblock %}

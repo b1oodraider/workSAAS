@@ -1,0 +1,6 @@
+<p><b>{{ o.subject }}</b></p>
+<div class="letter copyable" id="letter-{{ a.id }}">{{ o.body }}</div>
+<button type="button" class="btn-small" onclick="copyText('letter-{{ a.id }}', this)">Скопировать</button>
+<span class="muted">{{ o.body|length }} знаков</span>
+{% if o.warnings %}<h4>Перед отправкой</h4><ul>{% for w in o.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+<details><summary>Использованные факты</summary><ul>{% for k in o.key_points_used %}<li>{{ k }}</li>{% endfor %}</ul></details>

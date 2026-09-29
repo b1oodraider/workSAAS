@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Вход — workSAAS{% endblock %}
+{% block content %}
+<div class="card login">
+  <h1>workSAAS</h1>
+  <form method="post" action="/login">
+    <label>Логин <input type="text" name="username" autofocus required></label>
+    <label>Пароль <input type="password" name="password" required></label>
+    <p><button>Войти</button></p>
+  </form>
+  <p class="muted">Аккаунты создаёт администратор: <code>worksaas create-user &lt;логин&gt;</code></p>
+</div>
+{% endblock %}

@@ -1,0 +1,24 @@
+Тон: {{ params.tone }}. Длина: {{ params.length }}.
+{% if params.emphasis %}Кандидат просит учесть: {{ params.emphasis }}
+{% endif %}
+
+<resume>
+{{ resume }}
+</resume>
+{% if preferences %}
+
+<preferences>
+{{ preferences }}
+</preferences>
+{% endif %}
+
+<vacancy>
+{{ vacancy }}
+</vacancy>
+{% if match %}
+
+Ранее сделанный анализ соответствия (используй talking_points и учитывай gaps):
+- оценка: {{ match.score }} ({{ match.verdict }})
+- что подчеркнуть: {{ match.talking_points|join("; ") }}
+- пробелы: {% for g in match.gaps %}{{ g.requirement }} ({{ g.importance }}){% if not loop.last %}; {% endif %}{% endfor %}
+{% endif %}

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% from "_macros.html" import analysis_card %}
+{% block content %}
+<h1>{{ feature.title if feature else a.kind }}</h1>
+<p class="muted">
+  {% if resume %}Резюме: <a href="/resumes/{{ resume.id }}">{{ resume.title }}</a>{% endif %}
+  {% if resume and vacancy %} · {% endif %}
+  {% if vacancy %}Вакансия: <a href="/vacancies/{{ vacancy.id }}">{{ vacancy.title }}</a>{% if vacancy.company %} ({{ vacancy.company }}){% endif %}{% endif %}
+</p>
+{{ analysis_card(a, feature, link=False) }}
+{% if a.params %}<p class="muted">Параметры: {% for k, v in a.params.items() %}{{ k }}={{ v }} {% endfor %}</p>{% endif %}
+{% endblock %}

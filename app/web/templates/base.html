@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}workSAAS{% endblock %}</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+{% if user %}
+<header class="nav">
+  <a class="brand" href="/">workSAAS</a>
+  <a href="/resumes">Резюме</a>
+  <a href="/vacancies">Вакансии</a>
+  <a href="/searches">Подбор</a>
+  <a href="/jobs">Задачи</a>
+  <a href="/usage">Расходы</a>
+  <span class="spacer"></span>
+  <span class="muted">{{ user.username }}</span>
+  <form method="post" action="/logout" class="inline"><button class="btn-link">Выйти</button></form>
+</header>
+{% endif %}
+<main>
+{% for f in flashes %}<div class="flash flash-{{ f.kind }}">{{ f.text }}</div>{% endfor %}
+{% block content %}{% endblock %}
+</main>
+</body>
+</html>

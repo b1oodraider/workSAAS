@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_macros.html" import feature_form, analysis_card %}
+{% block content %}
+<h1>{{ resume.title }}</h1>
+<div class="cols">
+  <div class="card">
+    <h2>Действия</h2>
+    {% for f, fields in features %}
+      {{ feature_form(f, fields, "/resumes/" ~ resume.id, resume_id=resume.id) }}
+    {% endfor %}
+    <div class="feature">
+      <b>Подбор вакансий</b>
+      {% if searches %}<ul>{% for s in searches %}<li><a href="/searches/{{ s.id }}">{{ s.name }}</a></li>{% endfor %}</ul>{% endif %}
+      <p><a class="btn btn-small" href="/searches?resume_id={{ resume.id }}">Новый поиск</a></p>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Текст</h2>
+    <details><summary>Показать / редактировать</summary>
+      <form method="post" action="/resumes/{{ resume.id }}/edit">
+        <label>Название <input type="text" name="title" value="{{ resume.title }}"></label>
+        <label>Текст <textarea name="text" rows="18">{{ resume.text }}</textarea></label>
+        <label>Пожелания <textarea name="preferences" rows="3">{{ resume.preferences }}</textarea></label>
+        <p><button class="btn-small">Сохранить</button></p>
+      </form>
+    </details>
+    {% if resume.preferences %}<p><b>Пожелания:</b> {{ resume.preferences }}</p>{% endif %}
+    <form method="post" action="/resumes/{{ resume.id }}/delete" onsubmit="return confirm('Удалить резюме и все его анализы?')">
+      <button class="danger btn-small">Удалить</button>
+    </form>
+  </div>
+</div>
+<h2>Результаты</h2>
+{% for a in analyses %}{{ analysis_card(a, FEATURES.get(a.kind)) }}{% else %}<p class="muted">Пока ничего не запускали.</p>{% endfor %}
+{% endblock %}

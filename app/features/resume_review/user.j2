@@ -1,0 +1,13 @@
+{% if params.target_role %}Целевая роль: {{ params.target_role }}
+{% else %}Целевая роль не указана — определи наиболее вероятную по резюме.
+{% endif %}
+
+<resume>
+{{ resume }}
+</resume>
+{% if preferences %}
+
+<preferences>
+{{ preferences }}
+</preferences>
+{% endif %}

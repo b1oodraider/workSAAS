@@ -1,0 +1,18 @@
+<div class="score-line"><span class="score {{ o.overall_score|score_class }}">{{ o.overall_score }}</span> <span>для роли: <b>{{ o.target_role }}</b></span></div>
+<p>{{ o.verdict }}</p>
+<h4>Сильные стороны</h4>
+<ul>{% for s in o.strengths %}<li>{{ s }}</li>{% endfor %}</ul>
+<h4>Что исправить</h4>
+{% for i in o.issues %}
+<div class="issue sev-{{ i.severity }}">
+  <div><span class="tag">{{ i.severity }}</span> <b>{{ i.section }}</b>: {{ i.problem }}</div>
+  <div>→ {{ i.fix }}</div>
+  {% if i.example %}<blockquote>{{ i.example }}</blockquote>{% endif %}
+</div>
+{% endfor %}
+<h4>Оценка по разделам</h4>
+<table>{% for s in o.section_scores %}<tr><td>{{ s.section }}</td><td>{{ s.score }}/10</td><td>{{ s.comment }}</td></tr>{% endfor %}</table>
+{% if o.ats_notes %}<h4>ATS и поиск</h4><ul>{% for n in o.ats_notes %}<li>{{ n }}</li>{% endfor %}</ul>{% endif %}
+{% if o.missing_keywords %}<p><b>Не хватает ключевых слов:</b> {{ o.missing_keywords|join(", ") }}</p>{% endif %}
+<h4>Вариант блока «О себе»</h4>
+<blockquote class="copyable">{{ o.improved_summary }}</blockquote>

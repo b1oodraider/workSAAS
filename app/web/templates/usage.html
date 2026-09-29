@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Расходы на ИИ в этом месяце</h1>
+<div class="card">
+  <p>Потрачено: <b>${{ "%.2f"|format(spent) }}</b>
+    {% if budget > 0 %} из ${{ "%.2f"|format(budget) }}{% else %} (без лимита){% endif %}</p>
+  {% if rows %}
+  <table>
+    <tr><th>Функция</th><th>Модель</th><th>Вызовов</th><th>Из кэша</th><th>Токены вход/выход</th><th>$</th></tr>
+    {% for task, model, n, cached, tin, tout, cost in rows %}
+    <tr><td>{{ FEATURES[task].title if task in FEATURES else task }}</td><td class="muted">{{ model }}</td><td>{{ n }}</td>
+        <td>{{ cached or 0 }}</td><td>{{ tin or 0 }} / {{ tout or 0 }}</td><td>{{ "%.4f"|format(cost or 0) }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">Вызовов не было.</p>{% endif %}
+</div>
+{% if everyone %}
+<div class="card">
+  <h2>Все пользователи</h2>
+  <table>
+    <tr><th>Пользователь</th><th>Вызовов</th><th>$</th></tr>
+    {% for name, n, cost in everyone %}<tr><td>{{ name }}</td><td>{{ n }}</td><td>{{ "%.4f"|format(cost or 0) }}</td></tr>{% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

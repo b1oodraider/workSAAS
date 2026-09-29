@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Задачи</h1>
+<div class="card">
+{% if jobs %}
+<table>
+  <tr><th>#</th><th>Задача</th><th>Статус</th><th>Создана</th></tr>
+  {% for j in jobs %}
+  <tr><td>{{ j.id }}</td>
+      <td><a href="/jobs/{{ j.id }}">{{ j.title or j.kind }}</a>{% if j.error %}<div class="muted">{{ j.error[:200] }}</div>{% endif %}</td>
+      <td class="status-{{ j.status.value }}">{{ j.status.value }}</td>
+      <td class="muted">{{ j.created_at|dt }}</td></tr>
+  {% endfor %}
+</table>
+{% else %}<p class="muted">Задач пока не было.</p>{% endif %}
+</div>
+{% endblock %}
