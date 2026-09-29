@@ -17,7 +17,7 @@ import httpx
 
 from app.core.http import make_async_client
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft
+from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, matches_query
 
 _ATOM = "{http://www.w3.org/2005/Atom}"
 
@@ -70,6 +70,7 @@ def _draft(guid: str, title: str | None, link: str, body: str | None,
 
 class RSSSource(JobSource):
     name = "rss"
+    enabled_by_default = False
     title = "RSS-ленты"
 
     async def _load(self, client: httpx.AsyncClient, url: str) -> list[VacancyDraft]:
@@ -88,14 +89,8 @@ class RSSSource(JobSource):
             results = await asyncio.gather(*(self._load(client, u) for u in feeds),
                                            return_exceptions=True)
         drafts = [d for r in results if isinstance(r, list) for d in r]
-        words = [w.lower() for w in query.text.split() if len(w) > 1]
         need_all = bool(self.cfg.options.get("match_all_words"))
-
-        def matches(d: VacancyDraft) -> bool:
-            text = f"{d.title}\n{d.description}".lower()
-            hits = [w in text for w in words]
-            return all(hits) if need_all else any(hits)
-
-        found = [d for d in drafts if not words or matches(d)]
+        found = [d for d in drafts
+                 if matches_query(f"{d.title}\n{d.description}", query.text, all_words=need_all)]
         found.sort(key=lambda d: d.published_at or datetime.min, reverse=True)
         return found[:limit]

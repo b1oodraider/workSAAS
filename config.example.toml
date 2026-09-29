@@ -75,14 +75,50 @@ effort = "low"
 # ---------------------------------------------------------------------------
 # Источники вакансий
 # ---------------------------------------------------------------------------
+# Источник без секции в этом файле использует настройки по умолчанию
+# (hh, habr, trudvsem, remotive, remoteok, manual — включены; superjob, telegram, rss — нет).
+
 [sources.hh]
 enabled = true
 use_proxy = false
 [sources.hh.options]
+# auto — сначала API, при отказе (401/403) — разбор сайта; api — только API; web — только сайт
+mode = "auto"
+# Для режима сайта: auto — обычный HTTP, при капче переключиться на браузер (нужен
+# pip install -e ".[browser]" && playwright install chromium); http; browser
+fetcher = "auto"
+min_interval = 2.5                          # секунд между запросами к hh.ru — не уменьшайте сильно
 area = 113                                  # 113 Россия, 1 Москва, 2 СПб
-user_agent = "worksaas/0.1 (you@example.com)"  # hh.ru просит указывать контакт
-# access_token = ""                         # если hh.ru потребует OAuth-токен
-fetch_concurrency = 3
+user_agent = "worksaas/0.1 (you@example.com)"  # для API: hh.ru просит указывать контакт
+# access_token = ""                         # если есть OAuth-токен приложения hh.ru
+
+[sources.habr]                              # Хабр Карьера
+enabled = true
+
+[sources.superjob]                          # нужен бесплатный ключ: https://api.superjob.ru
+enabled = false
+[sources.superjob.options]
+api_key_env = "SUPERJOB_API_KEY"            # имя переменной в .env
+# town = 4                                  # 4 = Москва
+
+[sources.trudvsem]                          # «Работа России», открытый API без ключа
+enabled = true
+[sources.trudvsem.options]
+# region = "7700000000000"                  # код региона; пусто — вся Россия
+
+[sources.telegram]                          # публичные каналы с вакансиями (через t.me/s/…)
+enabled = false
+[sources.telegram.options]
+channels = [
+  # "имя_канала_без_собаки",
+]
+pages = 2
+
+[sources.remotive]                          # удалёнка за рубежом
+enabled = true
+
+[sources.remoteok]
+enabled = true
 
 [sources.rss]
 enabled = false

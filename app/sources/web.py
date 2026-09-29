@@ -195,6 +195,28 @@ class AutoFetcher:
         await self.browser.close()
 
 
+async def fetch_json(url: str, *, params: dict[str, Any] | None = None, use_proxy: bool = False,
+                     headers: dict[str, str] | None = None, source: str = "",
+                     min_interval: float = 0.5) -> Any:
+    """GET a JSON API with the shared rate limiter; errors become SourceError."""
+    host = urlsplit(url).netloc
+    await rate_limiter.wait(host, min_interval)
+    proxy = get_settings().proxy_url if use_proxy else None
+    async with httpx.AsyncClient(proxy=proxy, timeout=30.0, follow_redirects=True,
+                                 headers={**BROWSER_HEADERS, "Accept": "application/json",
+                                          **(headers or {})}) as client:
+        try:
+            resp = await client.get(url, params=params)
+        except httpx.HTTPError as exc:
+            raise SourceError(f"{source or host} недоступен: {exc}") from exc
+    if resp.status_code >= 400:
+        raise SourceError(f"{source or host} ответил {resp.status_code}")
+    try:
+        return resp.json()
+    except ValueError as exc:
+        raise SourceError(f"{source or host} вернул не JSON") from exc
+
+
 def make_fetcher(mode: FetchMode = "auto", *, use_proxy: bool = False,
                  min_interval: float = 1.5) -> PageFetcher:
     if mode == "http":

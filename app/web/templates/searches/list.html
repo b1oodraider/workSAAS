@@ -27,7 +27,7 @@
       </label>
       <label>Название <input type="text" name="name" placeholder="По умолчанию — по названию резюме"></label>
       <label>Источники</label>
-      {% for src in sources %}<label class="check"><input type="checkbox" name="sources" value="{{ src.name }}" checked> {{ src.title }}</label>{% endfor %}
+      {% for src in sources %}<label class="check" title="{{ src.hint }}"><input type="checkbox" name="sources" value="{{ src.name }}" {% if src.checked_by_default %}checked{% endif %}> {{ src.title }}{% if src.hint %} <span class="muted">({{ src.hint }})</span>{% endif %}</label><br>{% endfor %}
       <label>Доп. поисковые запросы (по одному на строку; основные ИИ составит из резюме)
         <textarea name="queries" rows="3"></textarea></label>
     </div>

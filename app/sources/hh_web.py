@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Iterator
 from datetime import datetime
 from typing import Any
 
@@ -19,6 +18,7 @@ from bs4 import BeautifulSoup, Tag
 
 from app.core.text import html_to_text
 from app.sources.base import VacancyDraft
+from app.sources.jsonld import find_job_posting, walk
 
 VACANCY_URL = "https://hh.ru/vacancy/{id}"
 _ID_RE = re.compile(r"/vacancy/(\d+)")
@@ -75,16 +75,6 @@ def parse_salary_text(text: str) -> tuple[int | None, int | None, str | None, bo
 # --------------------------------------------------------------------------- search page
 
 
-def _walk(obj: Any) -> Iterator[dict[str, Any]]:
-    if isinstance(obj, dict):
-        yield obj
-        for v in obj.values():
-            yield from _walk(v)
-    elif isinstance(obj, list):
-        for v in obj:
-            yield from _walk(v)
-
-
 def _embedded_state(soup: BeautifulSoup) -> Any | None:
     for tag in soup.find_all(["template", "script"]):
         tag_id = (tag.get("id") or "").lower()
@@ -138,7 +128,7 @@ def _draft_from_state_item(item: dict[str, Any]) -> VacancyDraft | None:
 
 def _drafts_from_state(state: Any) -> list[VacancyDraft]:
     drafts: dict[str, VacancyDraft] = {}
-    for d in _walk(state):
+    for d in walk(state):
         if "vacancyId" in d and ("name" in d or "title" in d):
             draft = _draft_from_state_item(d)
             if draft and draft.external_id not in drafts:
@@ -217,21 +207,9 @@ def has_next_page(html: str) -> bool:
 # --------------------------------------------------------------------------- vacancy page
 
 
-def _job_posting(soup: BeautifulSoup) -> dict[str, Any] | None:
-    for tag in soup.find_all("script", type="application/ld+json"):
-        try:
-            data = json.loads(tag.string or tag.get_text())
-        except (json.JSONDecodeError, TypeError):
-            continue
-        for d in _walk(data):
-            if d.get("@type") == "JobPosting":
-                return d
-    return None
-
-
 def parse_vacancy_page(html: str, external_id: str) -> VacancyDraft | None:
     soup = BeautifulSoup(html, "html.parser")
-    jp = _job_posting(soup) or {}
+    jp = find_job_posting(soup) or {}
 
     title = jp.get("title") or _text(_qa(soup, "vacancy-title"))
     if not title:

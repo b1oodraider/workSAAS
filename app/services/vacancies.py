@@ -19,6 +19,7 @@ from app.jobs.queue import JobError
 from app.models import UserVacancy, UserVacancyStatus, Vacancy
 from app.services.errors import NotFound, ValidationFailed
 from app.sources import SourceError, VacancyDraft, available_sources, get_source
+from app.sources.jsonld import draft_from_html
 
 MAX_VACANCY_CHARS = 40_000
 
@@ -187,13 +188,17 @@ async def draft_from_url(url: str) -> VacancyDraft:
     if resp.status_code >= 400:
         raise JobError(f"Страница вернула ошибку {resp.status_code}")
     html = resp.text
+    ext_id = hashlib.sha1(url.encode()).hexdigest()[:32]
+    structured = draft_from_html(html, source="manual", external_id=ext_id, url=url)
+    if structured and structured.description:
+        return structured
     m = _TITLE_RE.search(html)
     text = html_to_text(_STRIP_RE.sub("", html))
     if len(text) < 100:
         raise JobError("На странице не найден текст вакансии — вставьте его вручную")
     return VacancyDraft(
         source="manual",
-        external_id=hashlib.sha1(url.encode()).hexdigest()[:32],
+        external_id=ext_id,
         title=html_to_text(m.group(1))[:300] if m else url,
         url=url,
         description=text[:MAX_VACANCY_CHARS],

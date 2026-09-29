@@ -52,11 +52,27 @@ class VacancyDraft(BaseModel):
     raw: dict[str, Any] | None = None
 
 
+def matches_query(text: str, query: str, *, all_words: bool = False) -> bool:
+    """Client-side filter for sources without server-side search (feeds, channels)."""
+    words = [w.lower() for w in query.split() if len(w) > 1]
+    if not words:
+        return True
+    low = text.lower()
+    hits = [w in low for w in words]
+    return all(hits) if all_words else any(hits)
+
+
 class JobSource(ABC):
     name: str = ""
     title: str = ""
     # False for sources that cannot search (manual input).
     searchable: bool = True
+    # Pre-selected in the "new search" form.
+    checked_by_default: bool = True
+    # Short hint shown in the UI next to the source name.
+    hint: str = ""
+    # Used when config.toml has no [sources.<name>] section.
+    enabled_by_default: bool = True
 
     def __init__(self, cfg: SourceConfig) -> None:
         self.cfg = cfg
