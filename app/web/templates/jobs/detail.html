@@ -15,7 +15,7 @@
     {% set r = job.result %}
     {% if r.queries is defined %}
       <p>Запросы: {% for q in r.queries %}<code>{{ q }}</code> {% endfor %}</p>
-      <p>Найдено: {{ r.found }} · уникальных после фильтров: {{ r.unique }} · новых: {{ r.new }} · отправлено на оценку ИИ: {{ r.llm_match_enqueued }}</p>
+      <p>Найдено: {{ r.found }} · уникальных после фильтров: {{ r.unique }} · новых: {{ r.new }}{% if r.duplicates %} · дублей из других источников: {{ r.duplicates }}{% endif %} · отправлено на оценку ИИ: {{ r.llm_match_enqueued }}</p>
       {% if r.errors %}<details><summary>Ошибки источников ({{ r.errors|length }})</summary><ul>{% for e in r.errors %}<li>{{ e }}</li>{% endfor %}</ul></details>{% endif %}
     {% endif %}
   {% endif %}

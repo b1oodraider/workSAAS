@@ -24,6 +24,35 @@ from app.sources.jsonld import draft_from_html
 MAX_VACANCY_CHARS = 40_000
 
 
+_NOISE_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]|[^\w\s]+")
+_COMPANY_FORMS_RE = re.compile(r"\b(ооо|ао|пао|зао|оао|ип|llc|inc|ltd|gmbh)\b")
+
+
+def make_dedup_key(company: str | None, title: str) -> str | None:
+    """Same employer + same title (ignoring punctuation, brackets, legal form) = same vacancy."""
+    if not company:
+        return None
+
+    def norm(value: str) -> str:
+        value = _NOISE_RE.sub(" ", value.lower().replace("ё", "е"))
+        return " ".join(_COMPANY_FORMS_RE.sub(" ", value).split())
+
+    c, t = norm(company), norm(title)
+    if not c or not t:
+        return None
+    return hashlib.sha1(f"{c}|{t}".encode()).hexdigest()
+
+
+def canonical_for(s: Session, vacancy: Vacancy) -> Vacancy:
+    """The first stored vacancy with the same dedup key (itself if unique)."""
+    if not vacancy.dedup_key:
+        return vacancy
+    first = s.scalar(
+        select(Vacancy).where(Vacancy.dedup_key == vacancy.dedup_key).order_by(Vacancy.id).limit(1)
+    )
+    return first or vacancy
+
+
 def upsert(s: Session, draft: VacancyDraft) -> tuple[Vacancy, bool]:
     """Insert or refresh a vacancy. A partial draft never overwrites a full description."""
     vacancy = s.scalar(
@@ -34,6 +63,7 @@ def upsert(s: Session, draft: VacancyDraft) -> tuple[Vacancy, bool]:
     if vacancy is None:
         vacancy = Vacancy(**data)
         s.add(vacancy)
+        vacancy.fetched_at = utcnow()
     else:
         keep_full = draft.is_partial and not vacancy.is_partial
         for key, value in data.items():
@@ -41,6 +71,7 @@ def upsert(s: Session, draft: VacancyDraft) -> tuple[Vacancy, bool]:
                 continue
             setattr(vacancy, key, value)
         vacancy.fetched_at = utcnow()
+    vacancy.dedup_key = make_dedup_key(vacancy.company, vacancy.title)
     s.flush()
     return vacancy, created
 

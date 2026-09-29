@@ -46,6 +46,8 @@ class Vacancy(TimestampMixin, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     fetched_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     raw: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    # Normalised "company|title" to merge the same vacancy found in several sources.
+    dedup_key: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
 
 class UserVacancyStatus(str, enum.Enum):

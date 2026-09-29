@@ -195,3 +195,35 @@ async def test_scheduler_enqueues_due_searches_once(user_id, resume_id, stub_sou
     FakeProvider.canned["resume_profile"] = PROFILE
     await drain()
     assert enqueue_due_searches() == []  # ran just now, not due for an hour
+
+
+def test_dedup_key_normalisation():
+    k = vacancy_svc.make_dedup_key
+    assert k("ООО «Ромашка»", "Python-разработчик (Middle)") == k("Ромашка", "Python разработчик")
+    assert k("Ромашка", "Python-разработчик") != k("Лютик", "Python-разработчик")
+    assert k(None, "Python") is None
+
+
+class DupSource(StubSource):
+    name = "dup"
+
+    async def search(self, query, limit):
+        return [
+            VacancyDraft(source="dup", external_id="a", title="Python-разработчик", company="ООО Ромашка",
+                         description="Python, FastAPI"),
+            VacancyDraft(source="dup", external_id="b", title="Python-разработчик (удалённо)",
+                         company="Ромашка", description="Python, FastAPI, remote"),
+        ]
+
+
+async def test_search_merges_cross_source_duplicates(user_id, resume_id, monkeypatch, env):
+    from app.core.config import SourceConfig
+
+    monkeypatch.setitem(registry.SOURCE_CLASSES, "dup", DupSource)
+    monkeypatch.setitem(env.sources, "dup", SourceConfig())
+    FakeProvider.canned["resume_profile"] = PROFILE
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["dup"],
+                                      queries=[], filters={}).id
+    result = await search_svc.run_search(user_id, search_id)
+    assert result["unique"] == 1 and result["duplicates"] == 1 and result["llm_match_enqueued"] == 1

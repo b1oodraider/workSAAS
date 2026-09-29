@@ -147,12 +147,17 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
     new_count = 0
     with session_scope() as s:
         seen_ids: set[int] = set()
+        duplicates = 0
         for draft in drafts:
-            vacancy, created = vacancy_svc.upsert(s, draft)
+            stored, created = vacancy_svc.upsert(s, draft)
+            # The same vacancy from another source: keep one entry, match it once.
+            vacancy = vacancy_svc.canonical_for(s, stored)
+            if vacancy.id != stored.id:
+                duplicates += 1
             if vacancy.id in seen_ids:
                 continue
             seen_ids.add(vacancy.id)
-            new_count += int(created)
+            new_count += int(created and vacancy.id == stored.id)
             rank = ranker.score(
                 rank_profile,
                 RankInput(title=vacancy.title, text=vacancy.description + " " + " ".join(vacancy.skills),
@@ -189,6 +194,7 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
         "found": len(drafts),
         "unique": len(scored),
         "new": new_count,
+        "duplicates": duplicates,
         "llm_match_enqueued": len(to_match),
         "errors": errors[:10],
         "result_url": f"/searches/{search_id}",
