@@ -171,3 +171,27 @@ def test_web_flow(user_id, env):
         assert client.get(f"/resumes/{resume_id}").status_code == 404
         assert client.get(f"/vacancies/{vacancy_id}").status_code == 404
         assert client.get(f"/jobs/{job_id}").status_code == 404
+
+
+@pytest.mark.parametrize("url", ["http://127.0.0.1:8000/", "http://169.254.169.254/latest/meta-data",
+                                 "http://localhost/", "http://10.0.0.5/"])
+async def test_url_import_blocks_internal_addresses(url):
+    from app.jobs.queue import JobError
+
+    with pytest.raises(JobError, match="внутренние"):
+        await vacancy_svc.draft_from_url(url)
+
+
+async def test_scheduler_enqueues_due_searches_once(user_id, resume_id, stub_source):
+    from app.jobs.scheduler import enqueue_due_searches
+
+    with session_scope() as s:
+        search_svc.create(s, user_id, resume_id=resume_id, name="auto", sources=["stub"],
+                          queries=[], filters={}, interval_minutes=60)
+        search_svc.create(s, user_id, resume_id=resume_id, name="manual", sources=["stub"],
+                          queries=[], filters={}, interval_minutes=0)
+    assert len(enqueue_due_searches()) == 1
+    assert enqueue_due_searches() == []  # already queued
+    FakeProvider.canned["resume_profile"] = PROFILE
+    await drain()
+    assert enqueue_due_searches() == []  # ran just now, not due for an hour

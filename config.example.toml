@@ -1,0 +1,102 @@
+# Скопируйте в config.toml и поправьте под себя. Секреты — в .env, не здесь.
+# Любой параметр можно переопределить переменной окружения: WS_<СЕКЦИЯ>__<КЛЮЧ>.
+
+database_url = "sqlite:///data/worksaas.db"
+output_language = "русский"
+# Лимит расходов на LLM на одного пользователя в месяц, $. 0 = без лимита.
+default_monthly_budget_usd = 10.0
+# Прокси для провайдеров/источников с use_proxy = true. HTTP(S)-прокси; про SOCKS — см. README.
+# proxy_url = "http://user:pass@host:port"
+
+# ---------------------------------------------------------------------------
+# LLM-провайдеры. Имя секции — произвольное, на него ссылаются маршруты.
+# ---------------------------------------------------------------------------
+[llm.providers.anthropic]
+type = "anthropic"
+api_key_env = "ANTHROPIC_API_KEY"
+use_proxy = false
+# Автоматический повтор на другой модели, если модель отказалась отвечать.
+refusal_fallback = true
+
+# Любой OpenAI-совместимый сервер: OpenRouter, DeepSeek, Ollama, LM Studio, vLLM...
+# [llm.providers.openrouter]
+# type = "openai_compat"
+# base_url = "https://openrouter.ai/api/v1"
+# api_key_env = "OPENROUTER_API_KEY"
+# json_mode = "json_object"
+# use_proxy = true
+
+# Локальная модель через Ollama (на ноутбуке без GPU — медленно, 7B-модели дают заметно
+# худшее качество; разумно разве что для оценки вакансий/префильтра).
+# [llm.providers.local]
+# type = "openai_compat"
+# base_url = "http://localhost:11434/v1"
+# json_mode = "json_object"
+# timeout_s = 600
+
+[llm.providers.fake]
+type = "fake"   # офлайн-заглушка для разработки интерфейса
+
+# ---------------------------------------------------------------------------
+# Маршруты: какая модель обслуживает какую фичу. "default" — для всех остальных.
+# effort: low | medium | high | xhigh | max (глубина размышлений; влияет на цену).
+# ---------------------------------------------------------------------------
+[llm.routes.default]
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "medium"
+
+[llm.routes.match]            # массовая оценка вакансий — самая частая операция
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+
+[llm.routes.resume_profile]
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+
+# [llm.routes.cover_letter]
+# provider = "anthropic"
+# model = "claude-opus-5-5"
+# effort = "high"
+
+# Цены для учёта бюджета ($ за 1M токенов). Для Claude уже заданы в app/llm/pricing.py;
+# для других моделей добавьте сами, иначе их стоимость считается нулевой.
+# [llm.prices."deepseek-chat"]
+# input = 0.27
+# output = 1.10
+
+# ---------------------------------------------------------------------------
+# Источники вакансий
+# ---------------------------------------------------------------------------
+[sources.hh]
+enabled = true
+use_proxy = false
+[sources.hh.options]
+area = 113                                  # 113 Россия, 1 Москва, 2 СПб
+user_agent = "worksaas/0.1 (you@example.com)"  # hh.ru просит указывать контакт
+# access_token = ""                         # если hh.ru потребует OAuth-токен
+fetch_concurrency = 3
+
+[sources.rss]
+enabled = false
+[sources.rss.options]
+feeds = [
+  # "https://example.com/jobs.rss",
+]
+match_all_words = false
+
+[sources.manual]
+enabled = true
+
+# ---------------------------------------------------------------------------
+[matching]
+top_n = 15            # сколько лучших по префильтру вакансий за запуск оценивает LLM
+prefilter_min = 10.0  # ниже этого балла (0..100) в LLM не отправляем
+fetch_limit = 50      # вакансий на один запрос в одном источнике
+
+[jobs]
+concurrency = 2           # параллельных LLM-задач
+run_in_web_process = true # false — запускайте `worksaas worker` отдельно
+scheduler_interval_s = 60

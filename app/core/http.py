@@ -10,7 +10,11 @@ USER_AGENT = "worksaas/0.1 (self-hosted job search assistant)"
 
 
 def make_async_client(
-    *, use_proxy: bool = False, timeout: float = 30.0, headers: dict[str, str] | None = None
+    *,
+    use_proxy: bool = False,
+    timeout: float = 30.0,
+    headers: dict[str, str] | None = None,
+    follow_redirects: bool = True,
 ) -> httpx.AsyncClient:
     settings = get_settings()
     proxy = settings.proxy_url if use_proxy else None
@@ -18,5 +22,5 @@ def make_async_client(
         proxy=proxy,
         timeout=timeout,
         headers={"User-Agent": USER_AGENT, **(headers or {})},
-        follow_redirects=True,
+        follow_redirects=follow_redirects,
     )

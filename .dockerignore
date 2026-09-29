@@ -1,0 +1,8 @@
+.venv
+.git
+data
+.env
+config.toml
+**/__pycache__
+.pytest_cache
+tests

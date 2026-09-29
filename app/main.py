@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -26,8 +27,11 @@ log = logging.getLogger(__name__)
 
 def create_app(*, start_background: bool | None = None) -> FastAPI:
     settings = get_settings()
-    if settings.secret_key == "change-me":
-        log.warning("WS_SECRET_KEY is not set — sessions are insecure. Set it in .env")
+    secret_key = settings.secret_key
+    if secret_key in ("", "change-me"):
+        # Never sign sessions with a publicly known key; users re-login after restarts.
+        secret_key = secrets.token_urlsafe(32)
+        log.warning("WS_SECRET_KEY is not set: using a random key, sessions reset on restart")
     run_bg = settings.jobs.run_in_web_process if start_background is None else start_background
 
     @asynccontextmanager
@@ -45,7 +49,7 @@ def create_app(*, start_background: bool | None = None) -> FastAPI:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     app = FastAPI(title="workSAAS", lifespan=lifespan, docs_url=None, redoc_url=None)
-    app.add_middleware(SessionMiddleware, secret_key=settings.secret_key, same_site="lax",
+    app.add_middleware(SessionMiddleware, secret_key=secret_key, same_site="lax",
                        max_age=60 * 60 * 24 * 30)
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 

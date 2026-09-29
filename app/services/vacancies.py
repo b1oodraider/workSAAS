@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
+import ipaddress
 import re
+from urllib.parse import urlsplit
+
+import httpx
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -141,6 +146,21 @@ _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _STRIP_RE = re.compile(r"<(script|style|noscript|svg)[^>]*>.*?</\1>", re.I | re.S)
 
 
+async def _ensure_public_host(url: str) -> None:
+    """Block SSRF: users must not make the server fetch localhost/LAN/cloud-metadata addresses."""
+    host = urlsplit(url).hostname
+    if not host:
+        raise JobError("Некорректная ссылка")
+    try:
+        infos = await asyncio.get_running_loop().getaddrinfo(host, None)
+    except OSError as exc:
+        raise JobError(f"Не удалось найти сайт {host}") from exc
+    for info in infos:
+        ip = ipaddress.ip_address(info[4][0])
+        if not ip.is_global:
+            raise JobError("Ссылки на локальные и внутренние адреса запрещены")
+
+
 async def draft_from_url(url: str) -> VacancyDraft:
     for src in available_sources():
         ext_id = src.external_id_from_url(url)
@@ -148,13 +168,24 @@ async def draft_from_url(url: str) -> VacancyDraft:
             draft = await src.fetch(ext_id)
             if draft:
                 return draft
-    # Generic page: best-effort text extraction.
-    async with make_async_client() as client:
-        try:
-            resp = await client.get(url)
-            resp.raise_for_status()
-        except Exception as exc:  # noqa: BLE001
-            raise JobError(f"Не удалось загрузить страницу: {exc}") from exc
+    # Generic page: best-effort text extraction. Redirects are followed manually so
+    # every hop is checked against internal addresses.
+    async with make_async_client(follow_redirects=False) as client:
+        target = url
+        for _ in range(5):
+            await _ensure_public_host(target)
+            try:
+                resp = await client.get(target)
+            except httpx.HTTPError as exc:
+                raise JobError(f"Не удалось загрузить страницу: {exc}") from exc
+            if resp.is_redirect and resp.headers.get("location"):
+                target = str(resp.url.join(resp.headers["location"]))
+                continue
+            break
+        else:
+            raise JobError("Слишком много перенаправлений")
+    if resp.status_code >= 400:
+        raise JobError(f"Страница вернула ошибку {resp.status_code}")
     html = resp.text
     m = _TITLE_RE.search(html)
     text = html_to_text(_STRIP_RE.sub("", html))

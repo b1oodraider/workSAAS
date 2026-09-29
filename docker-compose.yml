@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      WS_CONFIG: /app/config.toml
+    volumes:
+      - ./data:/app/data
+      - ./config.toml:/app/config.toml:ro
+    # Only localhost: put Caddy/nginx with HTTPS in front on a VPS (see README).
+    ports:
+      - "127.0.0.1:8000:8000"
+    mem_limit: 512m
