@@ -36,6 +36,8 @@ cp .env.example .env                 # WS_SECRET_KEY, ключ LLM, токен �
 cp config.example.toml config.toml   # провайдер LLM, источники
 
 worksaas create-user me --admin      # спросит пароль
+worksaas doctor                      # проверит ключи, доступность сайтов, бота
+worksaas doctor --llm                # + пробный запрос к модели (доли цента)
 worksaas run                         # http://127.0.0.1:8000
 ```
 
@@ -145,6 +147,7 @@ worksaas init-db                     применить миграции
 worksaas create-user NAME [--admin] [--budget USD]
 worksaas set-password NAME
 worksaas set-budget NAME USD         0 = без лимита
+worksaas doctor [--llm]              проверка настроек и доступности сайтов/бота/LLM
 worksaas backup [путь]               копия базы (по умолчанию data/backups/), можно на ходу
 ```
 

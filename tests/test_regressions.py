@@ -328,3 +328,16 @@ def test_backup_command(tmp_path, env, user_id):
     target = tmp_path / "copy.db"
     main(["backup", str(target)])
     assert sqlite3.connect(target).execute("SELECT username FROM users").fetchone() == ("alice",)
+
+
+async def test_doctor_config_and_llm_checks(env):
+    from app.core.config import LLMRoute
+    from app.doctor import check_config, check_llm, check_telegram
+
+    env.llm.routes = {"default": LLMRoute(provider="fake", model="fake-model")}
+    names = [c.name for c in check_config()]
+    assert "WS_SECRET_KEY задан" in names and any("Playwright" in n for n in names)
+    assert (await check_telegram())[0].ok  # not configured is fine
+    FakeProvider.canned["doctor"] = {"ok": True, "word": "привет"}
+    llm = await check_llm()
+    assert len(llm) == 1 and llm[0].ok

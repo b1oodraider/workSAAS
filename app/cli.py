@@ -4,6 +4,7 @@
     worksaas create-user alice [--admin] [--budget 5]
     worksaas set-password alice
     worksaas set-budget alice 10
+    worksaas doctor [--llm]    # check config, job sites, bot token, LLM access
     worksaas backup [path]     # consistent SQLite copy, safe while running
     worksaas run [--host 127.0.0.1] [--port 8000]
     worksaas worker            # separate worker process (if jobs.run_in_web_process=false)
@@ -115,6 +116,18 @@ def cmd_backup(args) -> None:
     print(f"Копия базы: {target}")
 
 
+def cmd_doctor(args) -> None:
+    from app.doctor import run
+
+    checks = asyncio.run(run(llm=args.llm))
+    for c in checks:
+        print(f"{'✅' if c.ok else '❌'} {c.name}{' — ' + c.detail if c.detail else ''}")
+    failed = [c for c in checks if not c.ok]
+    if not args.llm:
+        print("\nПроверить реальный запрос к модели (стоит доли цента): worksaas doctor --llm")
+    sys.exit(1 if failed else 0)
+
+
 def cmd_run(args) -> None:
     import uvicorn
 
@@ -176,6 +189,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("username")
     p.add_argument("usd", type=float)
     p.set_defaults(fn=cmd_set_budget)
+
+    p = sub.add_parser("doctor", help="проверить настройки, доступность сайтов, бота и LLM")
+    p.add_argument("--llm", action="store_true", help="сделать пробный запрос к каждой модели из маршрутов")
+    p.set_defaults(fn=cmd_doctor)
 
     p = sub.add_parser("backup", help="копия базы SQLite (можно на работающем приложении)")
     p.add_argument("path", nargs="?", help="куда сохранить; по умолчанию data/backups/")
