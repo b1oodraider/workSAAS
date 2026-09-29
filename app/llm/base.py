@@ -52,6 +52,25 @@ class LLMRequest:
     def json_schema(self) -> dict[str, Any]:
         return self.output_type.model_json_schema()
 
+    @property
+    def inline_json_schema(self) -> dict[str, Any]:
+        """Schema with $defs/$ref inlined: weaker models follow flat schemas more reliably."""
+        schema = self.json_schema
+        defs = schema.pop("$defs", {})
+
+        def resolve(node: Any) -> Any:
+            if isinstance(node, dict):
+                if "$ref" in node:
+                    return resolve(defs[node["$ref"].split("/")[-1]])
+                # Drop pydantic's "title" labels (strings) but keep properties named "title" (dicts).
+                return {k: resolve(v) for k, v in node.items()
+                        if not (k == "title" and isinstance(v, str))}
+            if isinstance(node, list):
+                return [resolve(v) for v in node]
+            return node
+
+        return resolve(schema)
+
 
 @dataclass
 class TokenUsage:

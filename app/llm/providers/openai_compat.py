@@ -35,7 +35,7 @@ class OpenAICompatProvider:
             # Without native schema support the schema must be in the prompt.
             system += (
                 "\n\nВерни ТОЛЬКО JSON-объект, соответствующий этой JSON Schema, без пояснений:\n"
-                + json.dumps(req.json_schema, ensure_ascii=False)
+                + json.dumps(req.inline_json_schema, ensure_ascii=False)
             )
         payload: dict[str, Any] = {
             "model": req.model,
@@ -48,7 +48,7 @@ class OpenAICompatProvider:
         if self.cfg.json_mode == "json_schema":
             payload["response_format"] = {
                 "type": "json_schema",
-                "json_schema": {"name": req.task, "schema": req.json_schema},
+                "json_schema": {"name": req.task, "schema": req.inline_json_schema},
             }
         elif self.cfg.json_mode == "json_object":
             payload["response_format"] = {"type": "json_object"}

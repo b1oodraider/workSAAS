@@ -9,7 +9,7 @@ FEATURE = register(
         title="Профиль для поиска",
         description="Извлекает из резюме навыки, роли и поисковые запросы для подбора вакансий.",
         subject="resume",
-        task=LLMTask(name="resume_profile", version="1", output=ResumeProfile,
+        task=LLMTask(name="resume_profile", version="2", output=ResumeProfile,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         order=90,
     )

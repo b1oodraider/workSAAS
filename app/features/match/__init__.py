@@ -10,7 +10,7 @@ FEATURE = register(
         description="Насколько резюме подходит под вакансию: оценка, совпадения, пробелы, что подчеркнуть.",
         subject="resume_vacancy",
         # Resume lives in the system prompt so bulk matching reuses the prompt cache.
-        task=LLMTask(name="match", version="1", output=MatchResult,
+        task=LLMTask(name="match", version="2", output=MatchResult,
                      template_dir=feature_dir(__file__), max_tokens=8000, cache_system=True),
         score_field="score",
         order=30,

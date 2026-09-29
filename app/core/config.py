@@ -76,6 +76,7 @@ class LLMSettings(BaseModel):
             # Bulk tasks: same model, lower effort -> fewer thinking tokens.
             "match": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
             "resume_profile": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
+            "vacancy_review": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
         }
     )
     # Overrides / additions to app.llm.pricing.DEFAULT_PRICES.

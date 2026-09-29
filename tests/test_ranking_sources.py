@@ -70,3 +70,35 @@ def test_docx_extraction():
     buf = io.BytesIO()
     doc.save(buf)
     assert "Python-разработчик" in extract_text("cv.docx", buf.getvalue())
+
+
+def test_salary_filter_ignores_foreign_currency_and_stop_words_match_word_forms():
+    r = KeywordRanker()
+    f = SearchFilters(salary_min=200_000, exclude_words=["гемблинг"])
+    assert not r.score(PROFILE, RankInput("Python dev", "Python", salary_to=6000, currency="USD"), f).excluded
+    assert r.score(PROFILE, RankInput("Python dev", "Python", salary_to=100_000, currency="RUR"), f).excluded
+    assert r.score(PROFILE, RankInput("Python dev", "Разработка для гемблинга"), f).excluded
+    # skills stay whole-token: Java must not match JavaScript
+    java = RankProfile(core_skills=["Java"])
+    assert r.score(java, RankInput("Frontend", "JavaScript, React"), SearchFilters()).score == 0
+
+
+def test_openai_compat_schema_is_inlined():
+    from app.features.match.schema import MatchResult
+    from app.llm.base import LLMRequest
+
+    schema = LLMRequest(task="t", model="m", system="", user="", output_type=MatchResult).inline_json_schema
+    assert "$defs" not in schema and "$ref" not in str(schema)
+    assert schema["properties"]["gaps"]["items"]["properties"]["importance"]["enum"] == ["must", "nice"]
+
+
+def test_inline_schema_keeps_fields_named_title():
+    from pydantic import BaseModel
+
+    from app.llm.base import LLMRequest
+
+    class WithTitle(BaseModel):
+        title: str
+
+    schema = LLMRequest(task="t", model="m", system="", user="", output_type=WithTitle).inline_json_schema
+    assert "title" in schema["properties"] and "title" not in schema

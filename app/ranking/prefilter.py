@@ -36,6 +36,7 @@ class RankInput:
     salary_from: int | None = None
     salary_to: int | None = None
     remote: bool | None = None
+    currency: str | None = None
 
 
 @dataclass
@@ -50,8 +51,19 @@ class Ranker(Protocol):
 
 
 def _contains(haystack: str, phrase: str) -> bool:
+    """Whole-token phrase match: 'Java' must not match 'JavaScript'."""
     needle = normalize(phrase).strip()
     return bool(needle) and f" {needle} " in haystack
+
+
+def _contains_stem(haystack: str, phrase: str) -> bool:
+    """Match word forms for stop words: 'гемблинг' also hits 'гемблинга', 'гемблингом'."""
+    needle = normalize(phrase).strip()
+    return bool(needle) and f" {needle}" in haystack
+
+
+# Currencies the salary filter understands as rubles (the filter value is in rubles).
+RUBLE_CODES = {None, "", "RUR", "RUB"}
 
 
 class KeywordRanker:
@@ -60,11 +72,13 @@ class KeywordRanker:
         body = normalize(vacancy.title + " " + vacancy.text)
 
         for word in [*filters.exclude_words, *profile.negative_keywords]:
-            if _contains(body, word):
+            if _contains_stem(body, word):
                 return RankResult(0.0, [f"стоп-слово «{word}»"], excluded=True)
         if filters.remote_only and vacancy.remote is False:
             return RankResult(0.0, ["не удалёнка"], excluded=True)
-        if filters.salary_min and vacancy.salary_to and vacancy.salary_to < filters.salary_min:
+        # Salary filter is in rubles: never compare against dollars/euros/tenge.
+        if (filters.salary_min and vacancy.salary_to and vacancy.currency in RUBLE_CODES
+                and vacancy.salary_to < filters.salary_min):
             return RankResult(0.0, [f"зарплата до {vacancy.salary_to} < {filters.salary_min}"], excluded=True)
 
         weights = [(s, 2.0) for s in profile.core_skills] + [(s, 1.0) for s in profile.secondary_skills]

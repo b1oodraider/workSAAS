@@ -157,7 +157,7 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
                 rank_profile,
                 RankInput(title=vacancy.title, text=vacancy.description + " " + " ".join(vacancy.skills),
                           salary_from=vacancy.salary_from, salary_to=vacancy.salary_to,
-                          remote=vacancy.remote),
+                          remote=vacancy.remote, currency=vacancy.currency),
                 filters,
             )
             uv = vacancy_svc.attach(s, user_id, vacancy.id, search_id=search_id,

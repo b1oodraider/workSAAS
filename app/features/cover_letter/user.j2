@@ -1,5 +1,8 @@
 Тон: {{ params.tone }}. Длина: {{ params.length }}.
-{% if params.emphasis %}Кандидат просит учесть: {{ params.emphasis }}
+{% if params.emphasis %}Кандидат просит учесть:
+<user_text>
+{{ params.emphasis }}
+</user_text>
 {% endif %}
 
 <resume>
@@ -18,7 +21,9 @@
 {% if match %}
 
 Ранее сделанный анализ соответствия (используй talking_points и учитывай gaps):
-- оценка: {{ match.score }} ({{ match.verdict }})
+<match_analysis>
 - что подчеркнуть: {{ match.talking_points|join("; ") }}
 - пробелы: {% for g in match.gaps %}{{ g.requirement }} ({{ g.importance }}){% if not loop.last %}; {% endif %}{% endfor %}
+
+</match_analysis>
 {% endif %}

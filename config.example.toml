@@ -56,6 +56,11 @@ provider = "anthropic"
 model = "claude-opus-5-5"
 effort = "low"
 
+[llm.routes.vacancy_review]   # короткий вход, задача ближе к извлечению фактов
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+
 # [llm.routes.cover_letter]
 # provider = "anthropic"
 # model = "claude-opus-5-5"
