@@ -76,5 +76,7 @@ class UserVacancy(TimestampMixin, Base):
         ForeignKey("saved_searches.id", ondelete="SET NULL"), nullable=True, index=True
     )
     notes: Mapped[str] = mapped_column(Text, default="")
+    # When the user was notified (Telegram digest) about this vacancy.
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     vacancy: Mapped[Vacancy] = relationship(lazy="joined")

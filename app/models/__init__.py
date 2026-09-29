@@ -5,7 +5,7 @@ from app.models.job import Job, JobStatus
 from app.models.llm import LLMCache, LLMUsage
 from app.models.resume import Resume
 from app.models.search import SavedSearch
-from app.models.user import User
+from app.models.user import TelegramLinkCode, User
 from app.models.vacancy import UserVacancy, UserVacancyStatus, Vacancy
 
 __all__ = [
@@ -16,6 +16,7 @@ __all__ = [
     "LLMUsage",
     "Resume",
     "SavedSearch",
+    "TelegramLinkCode",
     "User",
     "UserVacancy",
     "UserVacancyStatus",

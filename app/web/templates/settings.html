@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Настройки</h1>
+<div class="cols">
+<div class="card">
+  <h2>Telegram</h2>
+  {% if not bot_enabled %}
+    <p class="muted">Бот не настроен администратором (нужен <code>WS_TELEGRAM__BOT_TOKEN</code> в .env).</p>
+  {% elif me.telegram_chat_id %}
+    <p>Привязан{% if me.telegram_username %} к @{{ me.telegram_username }}{% endif %}. Бот присылает новые подходящие вакансии
+      и принимает ссылки на вакансии для анализа.</p>
+    <form method="post" action="/settings/telegram/unlink"><button class="secondary btn-small">Отвязать</button></form>
+  {% elif link_code %}
+    <p>Код действует 15 минут:</p>
+    {% if bot_username %}
+      <p><a class="btn" href="https://t.me/{{ bot_username }}?start={{ link_code }}" target="_blank" rel="noopener">Открыть бота и привязать</a></p>
+      <p class="muted">Или отправьте боту @{{ bot_username }}: <code>/start {{ link_code }}</code></p>
+    {% else %}
+      <p>Отправьте боту: <code>/start {{ link_code }}</code></p>
+    {% endif %}
+  {% else %}
+    <p>Бот присылает новые подходящие вакансии, пишет сопроводительные по кнопке и анализирует вакансии по ссылке.</p>
+    <form method="post" action="/settings/telegram/link"><button>Привязать Telegram</button></form>
+  {% endif %}
+
+  <h2>Предпочтения</h2>
+  <form method="post" action="/settings/preferences">
+    <label>Присылать вакансии с оценкой ИИ от (0–100; 101 — не присылать; пусто — {{ default_threshold }})
+      <input type="number" name="notify_min_score" min="0" max="101" value="{{ me.notify_min_score if me.notify_min_score is not none else '' }}"></label>
+    <label>Резюме для бота
+      <select name="default_resume_id">
+        <option value="">последнее загруженное</option>
+        {% for r in resumes %}<option value="{{ r.id }}" {% if me.default_resume_id == r.id %}selected{% endif %}>{{ r.title }}</option>{% endfor %}
+      </select></label>
+    <p><button class="btn-small">Сохранить</button></p>
+  </form>
+</div>
+<div class="card">
+  <h2>Пароль</h2>
+  <form method="post" action="/settings/password">
+    <label>Текущий пароль <input type="password" name="current" required autocomplete="current-password"></label>
+    <label>Новый пароль (от 8 символов) <input type="password" name="new" required minlength="8" autocomplete="new-password"></label>
+    <p><button class="btn-small">Изменить</button></p>
+  </form>
+</div>
+</div>
+{% endblock %}

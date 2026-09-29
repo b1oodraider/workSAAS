@@ -111,6 +111,23 @@ class JobsSettings(BaseModel):
     scheduler_interval_s: float = 60.0
 
 
+class TelegramSettings(BaseModel):
+    # Token from @BotFather; put it in .env as WS_TELEGRAM__BOT_TOKEN.
+    bot_token: str | None = None
+    enabled: bool = True
+    use_proxy: bool = False
+    # Default threshold for "good match" notifications (users can change theirs).
+    notify_min_score: int = 75
+    # How often to check for new good matches / reminders to send.
+    digest_interval_s: float = 300.0
+    # Base URL of the web UI for links in messages, e.g. https://jobs.example.com
+    public_url: str = "http://127.0.0.1:8000"
+
+    @property
+    def active(self) -> bool:
+        return self.enabled and bool(self.bot_token)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="WS_",
@@ -138,6 +155,7 @@ class Settings(BaseSettings):
     )
     matching: MatchingSettings = Field(default_factory=MatchingSettings)
     jobs: JobsSettings = Field(default_factory=JobsSettings)
+    telegram: TelegramSettings = Field(default_factory=TelegramSettings)
 
     @classmethod
     def settings_customise_sources(

@@ -6,6 +6,7 @@
     worksaas set-budget alice 10
     worksaas run [--host 127.0.0.1] [--port 8000]
     worksaas worker            # separate worker process (if jobs.run_in_web_process=false)
+    worksaas bot               # Telegram bot only (if it doesn't run inside the web process)
 """
 
 from __future__ import annotations
@@ -98,16 +99,30 @@ def cmd_run(args) -> None:
 
 
 def cmd_worker(_args) -> None:
-    import app.services  # noqa: F401
     from app.jobs.queue import Worker
+    from app.plugins import load_all
     from app.jobs.scheduler import Scheduler
 
+    load_all()
     _migrate()
 
     async def main() -> None:
         await asyncio.gather(Worker().run(), Scheduler().run())
 
     asyncio.run(main())
+
+
+def cmd_bot(_args) -> None:
+    from app.bot.api import get_api
+    from app.bot.runner import BotRunner
+    from app.plugins import load_all
+
+    load_all()
+    _migrate()
+    api = get_api()
+    if api is None:
+        sys.exit("Бот не настроен: задайте WS_TELEGRAM__BOT_TOKEN в .env")
+    asyncio.run(BotRunner(api).run())
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -140,6 +155,7 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fn=cmd_run)
 
     sub.add_parser("worker").set_defaults(fn=cmd_worker)
+    sub.add_parser("bot", help="только Telegram-бот (если веб запущен с telegram.enabled=false)").set_defaults(fn=cmd_bot)
 
     args = parser.parse_args(argv)
     args.fn(args)
