@@ -18,3 +18,18 @@ Read `docs/ARCHITECTURE.md` before changing structure. Key rules:
 - UI text and prompts are in Russian; code and comments in English.
 
 Run `pytest` before committing: it uses the fake LLM provider and needs no network.
+
+## Review agents
+
+`.claude/agents/` holds critic subagents. After a non-trivial change, run the relevant ones
+(in parallel) and address their findings before committing:
+
+| Change | Agents |
+|---|---|
+| any code | `code-reviewer` |
+| routes, auth, sources, bot, uploads, config | `security-auditor` |
+| new module/source/feature/provider | `architecture-guard` |
+| prompts or output schemas | `prompt-critic` |
+| templates or bot flows | `ux-reviewer` |
+| features / bug fixes | `test-critic` |
+| planning what to build next | `product-critic` |

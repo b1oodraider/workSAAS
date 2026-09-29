@@ -7,3 +7,4 @@ data/
 config.toml
 *.db
 *.db-*
+research_notes/
