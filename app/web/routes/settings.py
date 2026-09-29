@@ -10,6 +10,7 @@ from app.core.security import hash_password, verify_password
 from app.models import User
 from app.services import resumes as resume_svc
 from app.services import telegram_links
+from app.services import users as users_svc
 from app.web.deps import CurrentUser, current_user, db
 from app.web.templating import flash, render
 
@@ -46,16 +47,12 @@ def telegram_unlink(request: Request, user: CurrentUser = Depends(current_user),
 def preferences(request: Request, notify_min_score: str = Form(""), default_resume_id: str = Form(""),
                 notify_off: bool = Form(False), user: CurrentUser = Depends(current_user),
                 s: Session = Depends(db)):
-    me = s.get(User, user.id)
     value = notify_min_score.strip()
     if notify_off:
-        me.notify_min_score = 101  # above any score: notifications off
+        users_svc.set_notify_threshold(s, user.id, users_svc.NOTIFY_OFF)
     else:
-        me.notify_min_score = int(value) if value.isdigit() and int(value) <= 100 else None
-    if default_resume_id.isdigit():
-        me.default_resume_id = resume_svc.get_owned(s, user.id, int(default_resume_id)).id
-    else:
-        me.default_resume_id = None
+        users_svc.set_notify_threshold(s, user.id, int(value) if value.isdigit() and int(value) <= 100 else None)
+    users_svc.set_default_resume(s, user.id, int(default_resume_id) if default_resume_id.isdigit() else None)
     flash(request, "Сохранено")
     return RedirectResponse("/settings", status_code=303)
 

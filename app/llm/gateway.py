@@ -9,14 +9,13 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
 from sqlalchemy import func, select
 
 from app.core.config import LLMTarget, Settings, get_settings
-from app.core.db import session_scope, utcnow
+from app.core.db import month_start, session_scope
 from app.core.text import stable_hash
 from app.llm.base import (
     BudgetExceeded,
@@ -65,12 +64,10 @@ class LLMGateway:
     # --- budget -------------------------------------------------------------
 
     def month_spent(self, user_id: int) -> float:
-        now = utcnow()
-        month_start = datetime(now.year, now.month, 1)
         with session_scope() as s:
             total = s.scalar(
                 select(func.coalesce(func.sum(LLMUsage.cost_usd), 0.0)).where(
-                    LLMUsage.user_id == user_id, LLMUsage.created_at >= month_start
+                    LLMUsage.user_id == user_id, LLMUsage.created_at >= month_start()
                 )
             )
         return float(total or 0.0)

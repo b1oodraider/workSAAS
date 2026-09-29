@@ -8,17 +8,18 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 from app.bot.api import TelegramAPI, TelegramError, button, clip, esc, keyboard, url_button
 from app.bot.texts import VERDICTS, salary, web_url
-from app.core.config import get_settings
 from app.core.db import session_scope
 from app.jobs import enqueue
-from app.llm import get_gateway
-from app.models import Analysis, Resume, SavedSearch, User, UserVacancy, Vacancy
+from app.models import Resume, SavedSearch, User
+from app.services import matches as matches_svc
 from app.services import search as search_svc
 from app.services import telegram_links
+from app.services import usage as usage_svc
+from app.services import users as users_svc
 from app.services import vacancies as vacancy_svc
 from app.services.errors import NotFound, ValidationFailed
 
@@ -187,19 +188,7 @@ async def cmd_help(ctx: Ctx) -> None:
 @command("top", "лучшие совпадения")
 async def cmd_top(ctx: Ctx) -> None:
     with session_scope() as s:
-        latest = (
-            select(Analysis.vacancy_id, func.max(Analysis.id).label("aid"))
-            .where(Analysis.user_id == ctx.user_id, Analysis.kind == "match")
-            .group_by(Analysis.vacancy_id).subquery()
-        )
-        rows = s.execute(
-            select(Vacancy, Analysis)
-            .join(latest, latest.c.vacancy_id == Vacancy.id)
-            .join(Analysis, Analysis.id == latest.c.aid)
-            .join(UserVacancy, (UserVacancy.vacancy_id == Vacancy.id) & (UserVacancy.user_id == ctx.user_id))
-            .where(UserVacancy.status.in_(["new", "saved"]))
-            .order_by(Analysis.score.desc().nullslast()).limit(8)
-        ).all()
+        rows = [(v, a) for _, v, a in matches_svc.top_matches(s, ctx.user_id, limit=8)]
         if not rows:
             await ctx.reply("Пока нет оценённых вакансий. Запустите поиск: /searches")
             return
@@ -241,16 +230,14 @@ async def cmd_resumes(ctx: Ctx) -> None:
 async def cmd_notify(ctx: Ctx) -> None:
     arg = ctx.args.lower()
     with session_scope() as s:
-        user = s.get(User, ctx.user_id)
         if arg in ("off", "выкл", "нет"):
-            user.notify_min_score = 101
+            users_svc.set_notify_threshold(s, ctx.user_id, users_svc.NOTIFY_OFF)
             msg = "Уведомления о вакансиях выключены. Включить: /notify 75"
         elif arg.isdigit() and 0 <= int(arg) <= 100:
-            user.notify_min_score = int(arg)
+            users_svc.set_notify_threshold(s, ctx.user_id, int(arg))
             msg = f"Буду присылать вакансии с оценкой от {int(arg)}."
         else:
-            current = (user.notify_min_score if user.notify_min_score is not None
-                       else get_settings().telegram.notify_min_score)
+            current = users_svc.notify_threshold(s.get(User, ctx.user_id))
             msg = None
     if msg is None:
         await ctx.reply(f"Присылать вакансии с оценкой от… Сейчас: {'выкл' if current > 100 else current}.",
@@ -262,16 +249,15 @@ async def cmd_notify(ctx: Ctx) -> None:
 
 @callback("nt")
 async def cb_notify(ctx: Ctx) -> None:
-    value = 101 if ctx.args == "off" else _int_arg(ctx.args)
+    value = users_svc.NOTIFY_OFF if ctx.args == "off" else _int_arg(ctx.args)
     with session_scope() as s:
-        s.get(User, ctx.user_id).notify_min_score = min(value, 101)
+        users_svc.set_notify_threshold(s, ctx.user_id, value)
     await ctx.api.answer_callback(ctx.callback_id, "Выключено" if value > 100 else f"Порог: {value}")
 
 
 @command("usage", "расходы на ИИ в этом месяце")
 async def cmd_usage(ctx: Ctx) -> None:
-    gw = get_gateway()
-    spent, budget = gw.month_spent(ctx.user_id), gw.budget_for(ctx.user_id)
+    spent, budget = usage_svc.spent(ctx.user_id), usage_svc.budget(ctx.user_id)
     limit = f" из ${budget:.2f}" if budget > 0 else " (без лимита)"
     await ctx.reply(f"В этом месяце потрачено ${spent:.2f}{limit}.")
 
@@ -377,11 +363,7 @@ async def cb_run_search(ctx: Ctx) -> None:
 async def cb_default_resume(ctx: Ctx) -> None:
     resume_id = _int_arg(ctx.args)
     with session_scope() as s:
-        from app.services import resumes as resume_svc
-
-        resume = resume_svc.get_owned(s, ctx.user_id, resume_id)
-        s.get(User, ctx.user_id).default_resume_id = resume.id
-        title = resume.title
+        title = users_svc.set_default_resume(s, ctx.user_id, resume_id)
     await ctx.api.answer_callback(ctx.callback_id, "Выбрано")
     await ctx.reply(f"Теперь использую резюме «{esc(title)}».")
 

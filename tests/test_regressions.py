@@ -15,7 +15,7 @@ from app.core.db import session_scope, utcnow
 from app.core.security import hash_password
 from app.features import FEATURES
 from app.jobs.queue import JobContext, drain, enqueue, job_handler, recover_stale_jobs
-from app.jobs.scheduler import enqueue_due_searches
+from app.services.search import enqueue_due_searches
 from app.llm import get_gateway
 from app.llm.base import BudgetExceeded, LLMUnavailable
 from app.llm.providers.fake import FakeProvider

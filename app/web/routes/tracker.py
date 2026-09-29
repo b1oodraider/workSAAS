@@ -10,7 +10,7 @@ from app.core.db import from_local
 from app.services import vacancies as vacancy_svc
 from app.services.errors import ValidationFailed
 from app.web.deps import CurrentUser, current_user, db, safe_path
-from app.web.routes.vacancies import STATUS_LABELS
+from app.models import STATUS_LABELS
 from app.web.templating import flash, render
 
 router = APIRouter()

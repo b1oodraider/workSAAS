@@ -9,8 +9,10 @@ from typing import Any, Protocol
 
 from pydantic import BaseModel, ValidationError
 
+from app.core.errors import UserError
 
-class LLMError(Exception):
+
+class LLMError(UserError):
     """Non-retryable LLM failure (bad config, bad request, auth)."""
 
     retryable = False

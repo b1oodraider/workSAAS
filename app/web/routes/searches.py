@@ -12,7 +12,7 @@ from app.services import search as search_svc
 from app.services.errors import ValidationFailed
 from app.sources import available_sources
 from app.web.deps import CurrentUser, current_user, db
-from app.web.routes.vacancies import STATUS_LABELS
+from app.models import STATUS_LABELS
 from app.web.templating import flash, render
 
 router = APIRouter(prefix="/searches")

@@ -7,6 +7,20 @@ output_language = "русский"
 default_monthly_budget_usd = 10.0
 # Прокси для провайдеров/источников с use_proxy = true. HTTP(S)-прокси; про SOCKS — см. README.
 # proxy_url = "http://user:pass@host:port"
+timezone = "Europe/Moscow"     # в каком поясе показывать и вводить даты
+session_https_only = false      # true, если сайт открыт по HTTPS (VPS за Caddy/nginx)
+max_upload_mb = 10              # максимальный размер файла резюме
+
+# ---------------------------------------------------------------------------
+# Telegram-БОТ (не путать с [sources.telegram] — чтением каналов с вакансиями ниже).
+# Токен — в .env: WS_TELEGRAM__BOT_TOKEN=...
+# ---------------------------------------------------------------------------
+[telegram]
+enabled = true                  # false — если бот запущен отдельно командой `worksaas bot`
+public_url = "http://127.0.0.1:8000"   # адрес веб-интерфейса для ссылок в сообщениях
+notify_min_score = 75           # порог «подходящей» вакансии по умолчанию (каждый может изменить свой)
+digest_interval_s = 300         # как часто проверять новые совпадения и напоминания
+use_proxy = false
 
 # ---------------------------------------------------------------------------
 # LLM-провайдеры. Имя секции — произвольное, на него ссылаются маршруты.
@@ -160,7 +174,7 @@ enabled = true
 [sources.trudvsem.options]
 # region = "7700000000000"                  # код региона; пусто — вся Россия
 
-[sources.telegram]                          # публичные каналы с вакансиями (через t.me/s/…)
+[sources.telegram]                          # ЧТЕНИЕ публичных каналов с вакансиями (через t.me/s/…); бот — секция [telegram] выше
 enabled = false
 [sources.telegram.options]
 channels = [

@@ -6,7 +6,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.features import features_for
-from app.models import Analysis, UserVacancy, UserVacancyStatus, Vacancy
+from app.models import STATUS_LABELS, Analysis, UserVacancy, UserVacancyStatus, Vacancy
 from app.services import resumes as resume_svc
 from app.services import vacancies as vacancy_svc
 from app.services.errors import ValidationFailed
@@ -15,15 +15,6 @@ from app.web.templating import flash, render
 
 router = APIRouter(prefix="/vacancies")
 
-STATUS_LABELS = {
-    "new": "новая",
-    "saved": "в избранном",
-    "applied": "откликнулся",
-    "interview": "собеседование",
-    "offer": "оффер",
-    "rejected": "отказ",
-    "hidden": "скрыта",
-}
 
 
 @router.get("")

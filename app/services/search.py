@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -13,8 +14,9 @@ from app.core.db import session_scope, utcnow
 from app.features import get_feature
 from app.features.resume_profile.schema import ResumeProfile
 from app.jobs import JobContext, enqueue, job_handler
+from app.jobs.scheduler import periodic
 from app.jobs.queue import JobError
-from app.models import Analysis, Job, JobStatus, SavedSearch, UserVacancy, Vacancy
+from app.models import Analysis, Job, JobStatus, SavedSearch, User, UserVacancy, Vacancy
 from app.ranking.prefilter import KeywordRanker, RankInput, RankProfile, Ranker
 from app.services import analysis as analysis_svc
 from app.services import resumes as resume_svc
@@ -71,6 +73,33 @@ def create(
     s.add(search)
     s.flush()
     return search
+
+
+@periodic
+def enqueue_due_searches() -> list[int]:
+    """Scheduler tick: enqueue runs of saved searches whose interval has passed."""
+    now = utcnow()
+    due: list[tuple[int, int]] = []
+    with session_scope() as s:
+        searches = s.scalars(
+            select(SavedSearch).join(User, User.id == SavedSearch.user_id)
+            .where(SavedSearch.enabled.is_(True), SavedSearch.interval_minutes > 0, User.is_active.is_(True))
+        ).all()
+        active = {
+            (j.payload or {}).get("search_id")
+            for j in s.scalars(
+                select(Job).where(
+                    Job.kind == "search_run", Job.status.in_([JobStatus.queued, JobStatus.running])
+                )
+            )
+        }
+        for search in searches:
+            if search.id in active:
+                continue
+            if search.last_run_at and search.last_run_at + timedelta(minutes=search.interval_minutes) > now:
+                continue
+            due.append((search.id, search.user_id))
+    return [enqueue_search_run(search_id, user_id) for search_id, user_id in due]
 
 
 def enqueue_search_run(search_id: int, user_id: int) -> int:
@@ -219,10 +248,7 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
 
 @job_handler("search_run")
 async def _search_job(ctx: JobContext) -> dict:
-    try:
-        return await run_search(ctx.user_id, ctx.payload["search_id"], parent_job_id=ctx.job_id)
-    except (NotFound, ValidationFailed) as exc:
-        raise JobError(str(exc) or "Поиск не найден") from exc
+    return await run_search(ctx.user_id, ctx.payload["search_id"], parent_job_id=ctx.job_id)
 
 
 def results(s: Session, user_id: int, search_id: int, *, include_hidden: bool = False,

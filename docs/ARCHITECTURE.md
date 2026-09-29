@@ -149,10 +149,14 @@ features/resume_review/
 ### 4.3 Источники вакансий: `JobSource`
 
 ```python
-class JobSource(Protocol):
-    name: str
+class JobSource(ABC):
+    name, title, hint: str
+    searchable: bool            # False для ручного ввода
+    trusted: bool               # False, если текст пишут произвольные люди (Telegram, RSS, ручной ввод)
+    enabled_by_default, checked_by_default: bool
     async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]: ...
     async def fetch(self, external_id: str) -> VacancyDraft | None: ...  # полная карточка
+    def external_id_from_url(self, url: str) -> str | None: ...          # импорт по ссылке
 ```
 
 - `VacancyDraft` — нормализованная вакансия (заголовок, компания, зарплата,
@@ -181,7 +185,7 @@ class JobSource(Protocol):
 Дедупликация: `vacancies.dedup_key` = нормализованные «компания|название».
 Одна вакансия из нескольких источников склеивается в одну запись и оценивается
 ИИ один раз. Каноническая копия берётся только из «доверенных» источников
-(не `manual`/`telegram`/`rss`), чтобы пользовательский текст не подменял чужие вакансии.
+(`JobSource.trusted`), чтобы пользовательский текст не подменял чужие вакансии.
 
 ### 4.4 Очередь задач `jobs/`
 
@@ -243,8 +247,9 @@ SavedSearch(resume, источники, фильтры)
 
 - `config.toml` — структура (маршруты LLM, источники, лимиты). Пример:
   `config.example.toml`.
-- `.env` — секреты (`ANTHROPIC_API_KEY`, `OPENAI_COMPAT_API_KEY`,
-  `SECRET_KEY`, `PROXY_URL`). Пример: `.env.example`.
+- `.env` — секреты: `WS_SECRET_KEY`, ключи провайдеров (имя переменной задаётся
+  `api_key_env` у провайдера), `WS_TELEGRAM__BOT_TOKEN`, `WS_PROXY_URL`,
+  ключи источников (`SUPERJOB_API_KEY`). Пример: `.env.example`.
 - Любой параметр можно переопределить переменной окружения с префиксом
   `WS_` и `__` как разделителем уровней.
 
@@ -258,6 +263,7 @@ SavedSearch(resume, источники, фильтры)
 (сохранённые поиски и результаты); задачи; расходы (своё потребление, для
 админа — всех). Пользователи создаются админом через CLI — регистрации нет.
 
+Главная (`/`): первые шаги, «пора действовать», лучшие совпадения, текущие задачи.
 Админка (`/admin`): пользователи, бюджеты, здоровье источников и LLM.
 Страница «Отклики» (`/tracker`) — воронка и напоминания.
 
@@ -283,7 +289,9 @@ SavedSearch(resume, источники, фильтры)
 ## 8. Безопасность
 
 - Пароли — `hashlib.scrypt`, сессии — подписанная cookie (`SECRET_KEY`).
-- Каждый запрос к резюме/анализу проверяет владельца (`owner_or_404`).
+- Каждый доступ к резюме/вакансии/анализу/поиску проверяет владельца в сервисах
+  (`get_owned`, `get_for_user`); кнопки бота проходят те же проверки.
+  `tests/test_regressions.py` проверяет чужие id на всех маршрутах.
 - Текст резюме и вакансий в промптах оборачивается в теги
   `<resume>…</resume>` / `<vacancy>…</vacancy>`, в system-промпте сказано,
   что это данные, а не инструкции (защита от prompt-injection из текстов
@@ -303,6 +311,13 @@ SavedSearch(resume, источники, фильтры)
 
 ## 10. Проверка качества
 
+- `tests/test_architecture.py` разбирает импорты всех модулей `app/` и падает при
+  нарушении слоёв (раздел 3) или импорте одной фичи из другой.
+- `tests/test_migrations.py` — модели совпадают с миграциями, а обновление
+  заполненной базы не теряет данные.
+- Ошибки для пользователя — наследники `app.core.errors.UserError`: воркер показывает
+  их текст как есть и повторяет только `retryable`.
+
 `.claude/agents/` — агенты-критики для Claude Code: `code-reviewer`, `security-auditor`,
 `architecture-guard`, `prompt-critic`, `ux-reviewer`, `test-critic`, `product-critic`.
 После заметного изменения запускаются подходящие (см. `CLAUDE.md`); их находки
@@ -317,7 +332,8 @@ SavedSearch(resume, источники, фильтры)
 | Другую модель для фичи | `[llm.routes.<kind>]` в `config.toml` |
 | Новый LLM-провайдер | класс в `llm/providers/`, регистрация в `llm/providers/__init__.py` |
 | Новый источник вакансий | файл в `sources/` + регистрация + секция `[sources.<name>]` |
-| Новую фоновую операцию | функция с `@job_handler("kind")` в `services/` |
+| Новую фоновую операцию | функция с `@job_handler("kind")` в `services/<модуль>.py`; новый модуль добавить в импорт `services/__init__.py` |
+| Периодическое действие | функция с `@periodic` (из `jobs/scheduler.py`) в модуле сервиса |
 | Новую страницу | роутер в `web/routes/` + шаблон |
 | Команду бота | функция с `@command("name", "описание")` в `bot/handlers.py` |
 | Кнопку бота | функция с `@callback("prefix")`; данные кнопки ≤ 64 байт |

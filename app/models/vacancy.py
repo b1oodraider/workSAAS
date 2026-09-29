@@ -60,6 +60,18 @@ class UserVacancyStatus(str, enum.Enum):
     hidden = "hidden"
 
 
+# Russian labels shared by the web UI and the bot.
+STATUS_LABELS = {
+    "new": "новая",
+    "saved": "в избранном",
+    "applied": "откликнулся",
+    "interview": "собеседование",
+    "offer": "оффер",
+    "rejected": "отказ",
+    "hidden": "скрыта",
+}
+
+
 class UserVacancy(TimestampMixin, Base):
     """Per-user view of a vacancy: pipeline status and prefilter score."""
 

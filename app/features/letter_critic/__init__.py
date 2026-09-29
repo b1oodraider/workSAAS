@@ -5,7 +5,7 @@ from app.features._shared import latest_output
 from app.features.base import AnalysisFeature, feature_dir
 from app.features.letter_critic.schema import LetterCritique
 from app.llm.tasks import LLMTask
-from app.services.errors import ValidationFailed
+from app.core.errors import ValidationFailed
 
 
 class Params(BaseModel):

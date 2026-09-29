@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.core.db import utcnow
-from app.llm import get_gateway
+from app.core.db import month_start
 from app.models import LLMUsage, User
+from app.services import usage as usage_svc
 from app.web.deps import CurrentUser, current_user, db
 from app.web.templating import render
 
@@ -17,8 +15,7 @@ router = APIRouter(prefix="/usage")
 
 @router.get("")
 def usage_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
-    now = utcnow()
-    month_start = datetime(now.year, now.month, 1)
+    since = month_start()
     cols = (
         LLMUsage.task,
         LLMUsage.model,
@@ -29,17 +26,16 @@ def usage_page(request: Request, user: CurrentUser = Depends(current_user), s: S
         func.sum(LLMUsage.cost_usd),
     )
     mine = s.execute(
-        select(*cols).where(LLMUsage.user_id == user.id, LLMUsage.created_at >= month_start)
+        select(*cols).where(LLMUsage.user_id == user.id, LLMUsage.created_at >= since)
         .group_by(LLMUsage.task, LLMUsage.model)
     ).all()
-    gw = get_gateway()
     everyone = []
     if user.is_admin:
         everyone = s.execute(
             select(User.username, func.count(LLMUsage.id), func.sum(LLMUsage.cost_usd))
             .join(LLMUsage, LLMUsage.user_id == User.id)
-            .where(LLMUsage.created_at >= month_start)
+            .where(LLMUsage.created_at >= since)
             .group_by(User.username)
         ).all()
-    return render(request, "usage.html", rows=mine, spent=gw.month_spent(user.id),
-                  budget=gw.budget_for(user.id), everyone=everyone)
+    return render(request, "usage.html", rows=mine, spent=usage_svc.spent(user.id),
+                  budget=usage_svc.budget(user.id), everyone=everyone)

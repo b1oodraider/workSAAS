@@ -6,9 +6,10 @@ from app.models.llm import LLMCache, LLMUsage
 from app.models.resume import Resume
 from app.models.search import SavedSearch
 from app.models.user import TelegramLinkCode, User
-from app.models.vacancy import UserVacancy, UserVacancyStatus, Vacancy
+from app.models.vacancy import STATUS_LABELS, UserVacancy, UserVacancyStatus, Vacancy
 
 __all__ = [
+    "STATUS_LABELS",
     "Analysis",
     "Job",
     "JobStatus",

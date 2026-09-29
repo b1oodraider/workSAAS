@@ -18,6 +18,12 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
+def month_start() -> datetime:
+    """Start of the current calendar month (UTC) — budgets are monthly."""
+    now = utcnow()
+    return datetime(now.year, now.month, 1)
+
+
 def _tz():
     from zoneinfo import ZoneInfo
 

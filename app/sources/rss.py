@@ -73,6 +73,7 @@ def _draft(guid: str, title: str | None, link: str, body: str | None,
 
 class RSSSource(JobSource):
     name = "rss"
+    trusted = False
     enabled_by_default = False
     title = "RSS-ленты"
 

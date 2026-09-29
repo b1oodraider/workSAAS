@@ -3,22 +3,17 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
-from app.core.db import utcnow
+from app.core.db import month_start, utcnow
 from app.core.security import hash_password
 from app.models import Job, JobStatus, LLMUsage, User
 from app.services.errors import NotFound, ValidationFailed
 from app.sources.registry import SOURCE_CLASSES, source_config
-
-
-def month_start() -> datetime:
-    now = utcnow()
-    return datetime(now.year, now.month, 1)
 
 
 def users_overview(s: Session) -> list[dict[str, Any]]:

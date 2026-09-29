@@ -10,6 +10,8 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError
 
+from app.core.errors import UserError
+
 from app.core.config import SourceConfig
 
 
@@ -20,7 +22,7 @@ T = TypeVar("T")
 ITEM_ERRORS = (ValidationError, AttributeError, TypeError, KeyError, ValueError, OverflowError, IndexError)
 
 
-class SourceError(Exception):
+class SourceError(UserError):
     pass
 
 
@@ -117,6 +119,10 @@ class JobSource(ABC):
     hint: str = ""
     # Used when config.toml has no [sources.<name>] section.
     enabled_by_default: bool = True
+    # Trusted sources publish vacancies themselves (job boards). Untrusted ones carry text
+    # written by arbitrary people (Telegram posts, RSS, manual input): their copy of a
+    # vacancy must never become the shared canonical one for other users.
+    trusted: bool = True
 
     def __init__(self, cfg: SourceConfig) -> None:
         self.cfg = cfg

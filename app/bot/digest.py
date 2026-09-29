@@ -13,13 +13,14 @@ from collections import defaultdict
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 
 from app.bot.api import MAX_TEXT, TelegramAPI, TelegramError, button, clip, esc, keyboard
 from app.bot.texts import salary, web_url
-from app.core.config import get_settings
 from app.core.db import session_scope, utcnow
 from app.models import Analysis, User, UserVacancy, Vacancy
+from app.services import matches as matches_svc
+from app.services import users as users_svc
 
 log = logging.getLogger(__name__)
 
@@ -76,24 +77,6 @@ async def _deliver(api: TelegramAPI, chat_id: int, text: str, kb: dict[str, Any]
 # --------------------------------------------------------------------------- digests
 
 
-def _pending_matches(s, user: User, threshold: int) -> list[tuple[UserVacancy, Vacancy, Analysis]]:
-    latest = (
-        select(Analysis.vacancy_id, func.max(Analysis.id).label("aid"))
-        .where(Analysis.user_id == user.id, Analysis.kind == "match")
-        .group_by(Analysis.vacancy_id).subquery()
-    )
-    rows = s.execute(
-        select(UserVacancy, Vacancy, Analysis)
-        .join(Vacancy, Vacancy.id == UserVacancy.vacancy_id)
-        .join(latest, latest.c.vacancy_id == Vacancy.id)
-        .join(Analysis, Analysis.id == latest.c.aid)
-        .where(UserVacancy.user_id == user.id, UserVacancy.notified_at.is_(None),
-               UserVacancy.status.in_(["new", "saved"]), Analysis.score >= threshold)
-        .order_by(Analysis.score.desc())
-    ).all()
-    return list(rows)
-
-
 def _digest_item(i: int, v: Vacancy, a: Analysis) -> str:
     summary = (a.output or {}).get("summary", "")
     return (f"\n{i}. <b>{esc(int(a.score or 0))}</b> — "
@@ -121,16 +104,15 @@ def build_digest(rows) -> tuple[str, dict, list[int]]:
 
 
 async def send_digests(api: TelegramAPI) -> int:
-    default_threshold = get_settings().telegram.notify_min_score
     sent = 0
     with session_scope() as s:
         users = list(s.scalars(select(User).where(User.telegram_chat_id.is_not(None), User.is_active.is_(True))))
         plans = []
         for user in users:
-            threshold = user.notify_min_score if user.notify_min_score is not None else default_threshold
+            threshold = users_svc.notify_threshold(user)
             if threshold > 100:
                 continue
-            rows = _pending_matches(s, user, threshold)
+            rows = matches_svc.top_matches(s, user.id, min_score=threshold, unnotified=True)
             if rows:
                 plans.append((user.telegram_chat_id, rows))
         messages = [(chat_id, *build_digest(rows)) for chat_id, rows in plans]

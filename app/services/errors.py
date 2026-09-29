@@ -1,6 +1,5 @@
-class NotFound(Exception):
-    """Entity doesn't exist or doesn't belong to the user (never leak which)."""
+"""Kept for existing imports; the error types live in app.core.errors."""
 
+from app.core.errors import NotFound, UserError, ValidationFailed
 
-class ValidationFailed(Exception):
-    """User input is invalid; message is user-facing."""
+__all__ = ["NotFound", "UserError", "ValidationFailed"]

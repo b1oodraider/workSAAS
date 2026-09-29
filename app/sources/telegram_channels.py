@@ -21,7 +21,7 @@ from bs4 import BeautifulSoup, Tag
 
 from app.core.text import html_to_text
 from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, matches_query, safe_map
-from app.sources.hh_web import parse_salary_text
+from app.sources.salary import parse_salary_text
 from app.sources.jsonld import parse_date
 from app.sources.web import make_fetcher
 
@@ -109,6 +109,7 @@ def parse_channel_page(html: str, channel: str) -> tuple[list[VacancyDraft], str
 
 class TelegramChannelsSource(JobSource):
     name = "telegram"
+    trusted = False
     enabled_by_default = False
     title = "Telegram-каналы"
     hint = "публичные каналы из конфига"

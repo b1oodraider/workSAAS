@@ -11,6 +11,7 @@ from app.bot.api import TelegramError, clip, esc, get_api
 from app.bot.handlers import vacancy_keyboard
 from app.bot.texts import vacancy_card
 from app.core.db import session_scope, utcnow
+from app.core.errors import UserError
 from app.jobs import JobContext, job_handler
 from app.jobs.queue import JobError
 from app.llm import BudgetExceeded, LLMError, LLMInvalidOutput, LLMRefusal, LLMUnavailable
@@ -18,7 +19,7 @@ from app.models import User, UserVacancy, Vacancy
 from app.services import analysis as analysis_svc
 from app.services import telegram_links
 from app.services import vacancies as vacancy_svc
-from app.services.errors import NotFound, ValidationFailed
+from app.services.errors import NotFound
 
 log = logging.getLogger(__name__)
 
@@ -62,12 +63,10 @@ async def _run(ctx: JobContext, body) -> dict:
     chat_id = ctx.payload["chat_id"]
     try:
         return await body()
-    except (JobError, LLMError, NotFound, ValidationFailed) as exc:
-        if getattr(exc, "retryable", False) and not ctx.final_attempt:
+    except UserError as exc:
+        if exc.retryable and not ctx.final_attempt:
             raise  # the queue will retry; tell the user only if it finally fails
         await _notify(chat_id, "Не получилось: " + esc(clip(user_message(exc), 500)))
-        if isinstance(exc, (NotFound, ValidationFailed)):
-            raise JobError(str(exc) or "Не найдено") from exc
         raise
     except Exception:
         await _notify(chat_id, "Не получилось: внутренняя ошибка. Попробуйте ещё раз позже.")

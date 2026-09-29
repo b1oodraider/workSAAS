@@ -193,7 +193,7 @@ async def test_url_import_blocks_internal_addresses(url):
 
 
 async def test_scheduler_enqueues_due_searches_once(user_id, resume_id, stub_source):
-    from app.jobs.scheduler import enqueue_due_searches
+    from app.services.search import enqueue_due_searches
 
     with session_scope() as s:
         search_svc.create(s, user_id, resume_id=resume_id, name="auto", sources=["stub"],

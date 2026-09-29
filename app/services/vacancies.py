@@ -22,7 +22,7 @@ from app.jobs import JobContext, enqueue, job_handler
 from app.jobs.queue import JobError
 from app.models import UserVacancy, UserVacancyStatus, Vacancy
 from app.services.errors import NotFound, ValidationFailed
-from app.sources import SourceError, VacancyDraft, available_sources, get_source
+from app.sources import VacancyDraft, available_sources, get_source
 from app.sources.jsonld import draft_from_html
 
 log = logging.getLogger(__name__)
@@ -49,18 +49,20 @@ def make_dedup_key(company: str | None, title: str) -> str | None:
     return hashlib.sha1(f"{c}|{t}".encode()).hexdigest()
 
 
-# User-generated content can't become the shared "canonical" copy for other users:
-# otherwise anyone could plant a fake description under a real company's vacancy.
-UNTRUSTED_SOURCES = ("manual", "telegram", "rss")
-
-
 def canonical_for(s: Session, vacancy: Vacancy) -> Vacancy:
-    """The first stored vacancy from a trusted source with the same dedup key (itself if none)."""
+    """The first stored vacancy from a trusted source with the same dedup key (itself if none).
+
+    User-generated content (untrusted sources, see JobSource.trusted) can't become the
+    shared canonical copy: otherwise anyone could plant a fake description under a real
+    company's vacancy. Unknown source names are treated as untrusted."""
     if not vacancy.dedup_key:
         return vacancy
+    from app.sources.registry import SOURCE_CLASSES
+
+    trusted = [name for name, cls in SOURCE_CLASSES.items() if cls.trusted]
     first = s.scalar(
         select(Vacancy)
-        .where(Vacancy.dedup_key == vacancy.dedup_key, Vacancy.source.not_in(UNTRUSTED_SOURCES))
+        .where(Vacancy.dedup_key == vacancy.dedup_key, Vacancy.source.in_(trusted))
         .order_by(Vacancy.id).limit(1)
     )
     return first or vacancy
@@ -355,10 +357,7 @@ def enqueue_import(user_id: int, url: str) -> int:
 
 @job_handler("vacancy_import")
 async def _import_job(ctx: JobContext) -> dict:
-    try:
-        draft = await draft_from_url(ctx.payload["url"])
-    except SourceError as exc:
-        raise JobError(str(exc)) from exc
+    draft = await draft_from_url(ctx.payload["url"])
     with session_scope() as s:
         vacancy_id = import_for_user(s, ctx.user_id, draft).id
     return {"vacancy_id": vacancy_id, "result_url": f"/vacancies/{vacancy_id}"}

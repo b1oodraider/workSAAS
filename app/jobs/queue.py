@@ -18,7 +18,7 @@ from sqlalchemy import select, update
 
 from app.core.config import get_settings
 from app.core.db import session_scope, utcnow
-from app.llm.base import LLMError
+from app.core.errors import UserError
 from app.models import Job, JobStatus
 
 log = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ Handler = Callable[[JobContext], Awaitable[dict[str, Any] | None]]
 _HANDLERS: dict[str, Handler] = {}
 
 
-class JobError(Exception):
+class JobError(UserError):
     """Expected, user-facing job failure (message is shown in the UI)."""
 
 
@@ -124,7 +124,7 @@ async def run_job(job: Job) -> None:
         if handler is None:
             raise JobError(f"Нет обработчика для задачи {job.kind!r}")
         result = await handler(ctx)
-    except (JobError, LLMError) as exc:
+    except UserError as exc:
         retryable = getattr(exc, "retryable", False)
         if retryable and job.attempts < get_settings().jobs.max_attempts:
             status = JobStatus.queued

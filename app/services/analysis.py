@@ -120,15 +120,10 @@ async def run_analysis(
 @job_handler("analysis")
 async def _analysis_job(ctx: JobContext) -> dict:
     p = ctx.payload
-    try:
-        analysis = await run_analysis(
-            ctx.user_id, p["kind"], resume_id=p.get("resume_id"),
-            vacancy_id=p.get("vacancy_id"), params=p.get("params"),
-        )
-    except (NotFound, ValidationFailed) as exc:
-        from app.jobs.queue import JobError
-
-        raise JobError(str(exc) or "Объект не найден") from exc
+    analysis = await run_analysis(
+        ctx.user_id, p["kind"], resume_id=p.get("resume_id"),
+        vacancy_id=p.get("vacancy_id"), params=p.get("params"),
+    )
     return {"analysis_id": analysis.id, "result_url": f"/analyses/{analysis.id}"}
 
 
