@@ -21,7 +21,7 @@
         <form method="post" action="/admin/users/{{ u.id }}" onsubmit="return confirm('Сбросить пароль?')">
           <input type="hidden" name="action" value="reset_password"><button class="btn-small secondary">Сбросить пароль</button></form>
         {% if u.id != user.id %}
-        <form method="post" action="/admin/users/{{ u.id }}">
+        <form method="post" action="/admin/users/{{ u.id }}" {% if u.is_active %}onsubmit="return confirm('Заблокировать {{ u.username }}?')"{% endif %}>
           <input type="hidden" name="action" value="{{ 'block' if u.is_active else 'unblock' }}">
           <button class="btn-small {{ 'danger' if u.is_active else 'secondary' }}">{{ "Заблокировать" if u.is_active else "Разблокировать" }}</button></form>
         {% endif %}
@@ -30,12 +30,12 @@
     {% endfor %}
   </table>
   <h2>Новый пользователь</h2>
-  <form method="post" action="/admin/users" class="row">
-    <input type="text" name="username" placeholder="логин" required style="flex:1">
-    <input type="text" name="password" placeholder="пароль (пусто — сгенерировать)" style="flex:1">
-    <input type="text" name="budget" placeholder="бюджет $/мес (пусто — по умолчанию; 0 — без лимита)" style="flex:1">
-    <label class="check"><input type="checkbox" name="is_admin" value="true"> админ</label>
-    <button class="btn-small">Создать</button>
+  <form method="post" action="/admin/users" class="admin-new">
+    <label>Логин <input type="text" name="username" required></label>
+    <label>Пароль <input type="text" name="password" placeholder="пусто — сгенерировать"></label>
+    <label>Бюджет, $ в месяц <input type="text" name="budget" placeholder="пусто — по умолчанию, 0 — без лимита"></label>
+    <label class="check"><input type="checkbox" name="is_admin" value="true"> администратор</label>
+    <p><button class="btn-small">Создать</button></p>
   </form>
 </div>
 <div class="cols">

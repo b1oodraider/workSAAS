@@ -13,7 +13,7 @@ from app.bot.texts import vacancy_card
 from app.core.db import session_scope, utcnow
 from app.jobs import JobContext, job_handler
 from app.jobs.queue import JobError
-from app.llm import LLMError
+from app.llm import BudgetExceeded, LLMError, LLMInvalidOutput, LLMRefusal, LLMUnavailable
 from app.models import User, UserVacancy, Vacancy
 from app.services import analysis as analysis_svc
 from app.services import telegram_links
@@ -40,13 +40,30 @@ def _default_resume_id(user_id: int) -> int | None:
         return resume.id if resume else None
 
 
+def user_message(exc: Exception) -> str:
+    """Russian text for the chat; raw provider/library messages may be English."""
+    if isinstance(exc, BudgetExceeded):
+        return str(exc)
+    if isinstance(exc, LLMRefusal):
+        return "модель отказалась отвечать на этот запрос."
+    if isinstance(exc, LLMUnavailable):
+        return "ИИ-провайдер временно недоступен, попробуйте через несколько минут."
+    if isinstance(exc, LLMInvalidOutput):
+        return "модель вернула некорректный ответ, попробуйте ещё раз."
+    if isinstance(exc, LLMError):
+        return "ошибка ИИ-провайдера — сообщите администратору."
+    if isinstance(exc, NotFound):
+        return "вакансия или резюме не найдены."
+    return str(exc) or "неизвестная ошибка"
+
+
 async def _run(ctx: JobContext, body) -> dict:
     """Common error handling: tell the user in the chat, then fail the job."""
     chat_id = ctx.payload["chat_id"]
     try:
         return await body()
     except (JobError, LLMError, NotFound, ValidationFailed) as exc:
-        await _notify(chat_id, f"Не получилось: {esc(clip(exc, 500)) or 'объект не найден'}")
+        await _notify(chat_id, "Не получилось: " + esc(clip(user_message(exc), 500)))
         if isinstance(exc, (NotFound, ValidationFailed)):
             raise JobError(str(exc) or "Не найдено") from exc
         raise

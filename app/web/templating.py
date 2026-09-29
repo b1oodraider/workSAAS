@@ -66,14 +66,41 @@ def dt_input(value: datetime | None) -> str:
     return local.strftime("%Y-%m-%dT%H:%M") if local else ""
 
 
+def source_title(name: str) -> str:
+    from app.sources.registry import SOURCE_CLASSES
+
+    cls = SOURCE_CLASSES.get(name)
+    return SOURCE_LABELS.get(name) or (cls.title if cls else name)
+
+
 def safe_url(value: str | None) -> str:
     """Vacancy URLs come from third-party feeds: allow only http(s) links."""
     return value if value and value.lower().startswith(("http://", "https://")) else ""
 
 
+SEVERITY_LABELS = {
+    "critical": "критично", "major": "важно", "minor": "мелочь",
+    "high": "серьёзно", "medium": "заметно", "low": "мелочь",
+    "must": "обязательно", "nice": "желательно",
+}
+JOB_STATUS_LABELS = {"queued": "в очереди", "running": "выполняется", "done": "готово", "failed": "ошибка"}
+SOURCE_LABELS = {"manual": "вручную"}
+
+def plural(n: int, one: str, few: str, many: str) -> str:
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
 templates.env.globals["FEATURES"] = FEATURES
 templates.env.filters.update(score_class=score_class, money=money, dt=dt, day=day, dt_input=dt_input,
                              safe_url=safe_url,
+                             severity=lambda v: SEVERITY_LABELS.get(v, v), plural=plural,
+                             job_status=lambda v: JOB_STATUS_LABELS.get(v, v),
+                             source_title=source_title,
                              tojson_pretty=lambda v: json.dumps(v, ensure_ascii=False, indent=2))
 
 

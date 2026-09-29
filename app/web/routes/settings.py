@@ -44,10 +44,14 @@ def telegram_unlink(request: Request, user: CurrentUser = Depends(current_user),
 
 @router.post("/preferences")
 def preferences(request: Request, notify_min_score: str = Form(""), default_resume_id: str = Form(""),
-                user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+                notify_off: bool = Form(False), user: CurrentUser = Depends(current_user),
+                s: Session = Depends(db)):
     me = s.get(User, user.id)
     value = notify_min_score.strip()
-    me.notify_min_score = int(value) if value.isdigit() and int(value) <= 101 else None
+    if notify_off:
+        me.notify_min_score = 101  # above any score: notifications off
+    else:
+        me.notify_min_score = int(value) if value.isdigit() and int(value) <= 100 else None
     if default_resume_id.isdigit():
         me.default_resume_id = resume_svc.get_owned(s, user.id, int(default_resume_id)).id
     else:

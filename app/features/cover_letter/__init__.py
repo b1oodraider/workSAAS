@@ -13,8 +13,13 @@ from app.models import Analysis
 
 
 class CoverLetterParams(BaseModel):
-    tone: Literal["friendly", "formal", "concise", "enthusiastic"] = Field("friendly", title="Тон")
-    length: Literal["short", "medium", "long"] = Field("short", title="Длина")
+    tone: Literal["friendly", "formal", "concise", "enthusiastic"] = Field(
+        "friendly", title="Тон", json_schema_extra={"labels": {
+            "friendly": "дружелюбный деловой", "formal": "официальный", "concise": "максимально кратко",
+            "enthusiastic": "с энтузиазмом"}})
+    length: Literal["short", "medium", "long"] = Field(
+        "short", title="Длина", json_schema_extra={"labels": {
+            "short": "короткое (отклик на hh.ru)", "medium": "среднее", "long": "длинное"}})
     language: str = Field("", title="Язык письма (пусто = язык вакансии)")
     emphasis: str = Field("", title="Что подчеркнуть / доп. контекст")
 

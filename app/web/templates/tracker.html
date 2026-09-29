@@ -24,13 +24,19 @@
 
 <div class="board">
 {% for status, items in data.columns.items() %}
-  <div class="card column">
+  <div class="card column {{ 'empty' if not items }}">
     <h2>{{ statuses[status] }} <span class="muted">{{ items|length }}</span></h2>
     {% for uv in items %}{% set v = uv.vacancy %}
       <div class="tile">
         <a href="/vacancies/{{ v.id }}">{{ v.title }}</a>
         <div class="muted">{{ v.company or "" }}{% if uv.applied_at %} · отклик {{ uv.applied_at|day }}{% endif %}</div>
         {% if uv.next_action_at %}<div class="muted">⏰ {{ uv.next_action_at|day }} {{ uv.next_action_note }}</div>{% endif %}
+        <form method="post" action="/vacancies/{{ v.id }}/status">
+          <input type="hidden" name="back" value="/tracker">
+          <select name="status" onchange="this.form.submit()" aria-label="Статус">
+            {% for k, label in statuses.items() %}<option value="{{ k }}" {% if k == uv.status.value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+          </select>
+        </form>
       </div>
     {% else %}<p class="muted">пусто</p>{% endfor %}
   </div>

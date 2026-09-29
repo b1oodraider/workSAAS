@@ -1,4 +1,4 @@
-<p><b>{{ o.headline }}</b> · грейд: {{ o.seniority }}{% if o.years_experience %} · опыт ≈ {{ o.years_experience }} лет{% endif %} · формат: {{ o.work_format }}</p>
+<p><b>{{ o.headline }}</b> · грейд: {{ o.seniority }}{% if o.years_experience %} · опыт ≈ {{ o.years_experience|round|int }} {{ o.years_experience|round|int|plural("год", "года", "лет") }}{% endif %} · формат: {{ o.work_format }}</p>
 <p><b>Роли:</b> {{ o.roles|join(", ") }}</p>
 <p><b>Ключевые навыки:</b> {{ o.skills|selectattr("level","equalto","core")|map(attribute="name")|join(", ") }}</p>
 <p><b>Дополнительные:</b> {{ o.skills|selectattr("level","equalto","secondary")|map(attribute="name")|join(", ") }}</p>

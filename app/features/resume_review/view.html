@@ -5,7 +5,7 @@
 <h4>Что исправить</h4>
 {% for i in o.issues %}
 <div class="issue sev-{{ i.severity }}">
-  <div><span class="tag">{{ i.severity }}</span> <b>{{ i.section }}</b>: {{ i.problem }}</div>
+  <div><span class="tag">{{ i.severity|severity }}</span> <b>{{ i.section }}</b>: {{ i.problem }}</div>
   <div>→ {{ i.fix }}</div>
   {% if i.example %}<blockquote>{{ i.example }}</blockquote>{% endif %}
 </div>

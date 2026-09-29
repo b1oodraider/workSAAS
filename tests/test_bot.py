@@ -279,3 +279,36 @@ def test_local_time_conversion(env):
     env.timezone = "Europe/Moscow"
     utc = from_local(datetime(2026, 9, 29, 12, 0))
     assert utc == datetime(2026, 9, 29, 9, 0) and to_local(utc) == datetime(2026, 9, 29, 12, 0)
+
+
+async def test_notify_buttons_and_status_undo(user_id, linked, tg):
+    await handle_update(tg.api, msg(f"/start {linked}"))
+    await handle_update(tg.api, msg("/notify"))
+    kb = json.loads(tg.sent()[-1]["reply_markup"])["inline_keyboard"]
+    assert kb[0][2]["callback_data"] == "nt:80"
+    await handle_update(tg.api, cb("nt:80"))
+    with session_scope() as s:
+        assert s.get(User, user_id).notify_min_score == 80
+        vid = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+
+    update = cb(f"st:hidden:{vid}")
+    update["callback_query"]["message"].update({
+        "message_id": 42,
+        "reply_markup": {"inline_keyboard": [[{"text": "x", "callback_data": f"cl:{vid}"}],
+                                             [{"text": "y", "callback_data": "cl:999"}]]},
+    })
+    await handle_update(tg.api, update)
+    edits = [p for m, p in tg.calls if m == "editMessageReplyMarkup"]
+    rows = json.loads(edits[-1]["reply_markup"])["inline_keyboard"]
+    assert rows[0][0]["callback_data"] == f"st:new:{vid}" and rows[1][0]["callback_data"] == "cl:999"
+    with session_scope() as s:
+        _, uv = vacancy_svc.get_for_user(s, user_id, vid)
+        assert uv.status.value == "hidden"
+
+
+async def test_help_lists_registered_commands(user_id, linked, tg):
+    await handle_update(tg.api, msg(f"/start {linked}"))
+    await handle_update(tg.api, msg("/help"))
+    text = tg.sent()[-1]["text"]
+    for name in ("top", "searches", "resumes", "notify", "usage", "unlink"):
+        assert f"/{name}" in text

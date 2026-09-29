@@ -5,6 +5,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models import SavedSearch
 from app.services import resumes as resume_svc
 from app.services import search as search_svc
@@ -25,15 +26,26 @@ EXPERIENCE = {
 }
 
 
-@router.get("")
-def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+AREAS = {"": "как в настройках", "113": "Россия", "1": "Москва", "2": "Санкт-Петербург",
+         "4": "Новосибирск", "3": "Екатеринбург", "88": "Казань", "16": "Беларусь", "40": "Казахстан"}
+
+
+def _list(request: Request, user: CurrentUser, s: Session, form=None):
     searches = list(s.scalars(
         select(SavedSearch).where(SavedSearch.user_id == user.id).order_by(SavedSearch.id.desc())
     ))
+    values = {k: form.get(k) for k in form.keys()} if form is not None else {}
+    checked = form.getlist("sources") if form is not None else None
     return render(request, "searches/list.html", searches=searches,
                   resumes=resume_svc.list_for_user(s, user.id),
-                  sources=available_sources(searchable_only=True), experience=EXPERIENCE,
-                  preselect=request.query_params.get("resume_id", ""))
+                  sources=available_sources(searchable_only=True), experience=EXPERIENCE, areas=AREAS,
+                  preselect=values.get("resume_id") or request.query_params.get("resume_id", ""),
+                  values=values, checked=checked, top_n=get_settings().matching.top_n)
+
+
+@router.get("")
+def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+    return _list(request, user, s)
 
 
 @router.post("")
@@ -59,8 +71,8 @@ async def create(request: Request, user: CurrentUser = Depends(current_user), s:
             interval_minutes=int(form.get("interval_minutes") or 0),
         )
     except (ValidationFailed, ValueError) as exc:
-        flash(request, str(exc), "error")
-        return RedirectResponse("/searches", status_code=303)
+        flash(request, str(exc) if isinstance(exc, ValidationFailed) else "Проверьте числа в форме", "error")
+        return _list(request, user, s, form=form)
     s.commit()
     job_id = search_svc.enqueue_search_run(search.id, user.id)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)

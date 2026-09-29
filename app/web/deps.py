@@ -79,7 +79,8 @@ def form_fields(model: type[BaseModel]) -> list[dict[str, Any]]:
             item["type"] = "textarea"
         elif get_origin(ann) is not None and get_args(ann) and all(isinstance(a, str) for a in get_args(ann)):
             item["type"] = "select"
-            item["options"] = list(get_args(ann))
+            labels = extra.get("labels") or {}
+            item["options"] = [(o, labels.get(o, o)) for o in get_args(ann)]
         elif ann is bool:
             item["type"] = "checkbox"
         elif ann is int:

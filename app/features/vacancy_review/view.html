@@ -1,7 +1,7 @@
 <div class="score-line"><span class="score {{ o.overall_score|score_class }}">{{ o.overall_score }}</span> <span>ясность описания: {{ o.clarity_score }}/10 · уровень: {{ o.seniority_guess }}</span></div>
 <p>{{ o.summary }}</p>
 {% if o.red_flags %}<h4>Красные флаги</h4>
-{% for f in o.red_flags %}<div class="issue sev-{{ {'high':'critical','medium':'major','low':'minor'}[f.severity] }}"><span class="tag">{{ f.severity }}</span> {{ f.text }}<div class="muted">«{{ f.evidence }}»</div></div>{% endfor %}{% endif %}
+{% for f in o.red_flags %}<div class="issue sev-{{ {'high':'critical','medium':'major','low':'minor'}[f.severity] }}"><span class="tag">{{ f.severity|severity }}</span> {{ f.text }}<div class="muted">«{{ f.evidence }}»</div></div>{% endfor %}{% endif %}
 {% if o.green_flags %}<h4>Зелёные флаги</h4><ul>{% for g in o.green_flags %}<li>{{ g }}</li>{% endfor %}</ul>{% endif %}
 <div class="cols">
 <div><h4>Обязательно</h4><ul>{% for r in o.must_have %}<li>{{ r }}</li>{% endfor %}</ul></div>

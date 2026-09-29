@@ -8,5 +8,7 @@
   {% if vacancy %}Вакансия: <a href="/vacancies/{{ vacancy.id }}">{{ vacancy.title }}</a>{% if vacancy.company %} ({{ vacancy.company }}){% endif %}{% endif %}
 </p>
 {{ analysis_card(a, feature, link=False) }}
-{% if a.params %}<p class="muted">Параметры: {% for k, v in a.params.items() %}{{ k }}={{ v }} {% endfor %}</p>{% endif %}
+{% set fields = feature.params_model.model_fields if feature else {} %}
+{% set shown = a.params.items()|selectattr(1)|list if a.params else [] %}
+{% if shown %}<p class="muted">Параметры: {% for k, v in shown %}{{ fields[k].title if k in fields and fields[k].title else k }}: {{ v if v|string|length < 120 else (v|string)[:120] ~ "…" }}{% if not loop.last %}; {% endif %}{% endfor %}</p>{% endif %}
 {% endblock %}

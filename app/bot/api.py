@@ -136,6 +136,10 @@ class TelegramAPI:
                                reply_markup=reply_markup,
                                link_preview_options={"is_disabled": disable_preview})
 
+    async def edit_markup(self, chat_id: int, message_id: int, markup: dict[str, Any]) -> None:
+        await self.call("editMessageReplyMarkup", chat_id=chat_id, message_id=message_id,
+                        reply_markup=markup)
+
     async def answer_callback(self, callback_id: str, text: str = "") -> None:
         await self.call("answerCallbackQuery", callback_query_id=callback_id, text=text or None)
 

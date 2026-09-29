@@ -2,7 +2,7 @@
 <p>{{ o.summary }}</p>
 <div class="cols">
 <div><h4>Совпадает</h4><ul>{% for m in o.matched %}<li>{{ m }}</li>{% endfor %}</ul></div>
-<div><h4>Пробелы</h4>{% for g in o.gaps %}<div class="issue sev-{{ 'major' if g.importance=='must' else 'minor' }}"><span class="tag">{{ g.importance }}</span> {{ g.requirement }}<div class="muted">→ {{ g.how_to_close }}</div></div>{% endfor %}</div>
+<div><h4>Пробелы</h4>{% for g in o.gaps %}<div class="issue sev-{{ 'major' if g.importance=='must' else 'minor' }}"><span class="tag">{{ g.importance|severity }}</span> {{ g.requirement }}<div class="muted">→ {{ g.how_to_close }}</div></div>{% endfor %}</div>
 </div>
 {% if o.risks %}<h4>Риски</h4><ul>{% for r in o.risks %}<li>{{ r }}</li>{% endfor %}</ul>{% endif %}
 <h4>Что подчеркнуть</h4><ul>{% for t in o.talking_points %}<li>{{ t }}</li>{% endfor %}</ul>

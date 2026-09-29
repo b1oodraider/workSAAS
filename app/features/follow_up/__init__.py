@@ -11,7 +11,9 @@ from app.llm.tasks import LLMTask
 
 class Params(BaseModel):
     situation: Literal["no_reply", "after_interview", "after_test_task", "after_rejection"] = Field(
-        "no_reply", title="Ситуация")
+        "no_reply", title="Ситуация", json_schema_extra={"labels": {
+            "no_reply": "нет ответа на отклик", "after_interview": "после собеседования",
+            "after_test_task": "после тестового", "after_rejection": "после отказа"}})
     details: str = Field("", title="Подробности (с кем общались, что обсуждали)",
                          json_schema_extra={"widget": "textarea"})
 

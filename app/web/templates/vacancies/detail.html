@@ -17,11 +17,13 @@
       <button class="btn-small">Сохранить статус</button>
     </form>
     {% if uv.applied_at %}<p class="muted">Отклик: {{ uv.applied_at|dt }}</p>{% endif %}
-    <form method="post" action="/vacancies/{{ vacancy.id }}/next-action" class="row">
-      <input type="datetime-local" name="when" style="flex:1" value="{{ uv.next_action_at|dt_input }}">
-      <input type="text" name="note" style="flex:2" placeholder="Следующий шаг: написать HR, тестовое до…" value="{{ uv.next_action_note }}">
-      <button class="btn-small secondary">Напомнить</button>
+    <details {% if uv.next_action_at %}open{% endif %}><summary>Напомнить о следующем шаге{% if uv.next_action_at %}: {{ uv.next_action_at|dt }}{% endif %}</summary>
+    <form method="post" action="/vacancies/{{ vacancy.id }}/next-action">
+      <label>Когда <input type="datetime-local" name="when" value="{{ uv.next_action_at|dt_input }}"></label>
+      <label>Что сделать <input type="text" name="note" placeholder="Написать HR, сдать тестовое…" value="{{ uv.next_action_note }}"></label>
+      <p><button class="btn-small secondary">Сохранить напоминание</button> <span class="muted">пустая дата — снять</span></p>
     </form>
+    </details>
     {% for f, fields in vacancy_features %}
       {{ feature_form(f, fields, "/vacancies/" ~ vacancy.id, vacancy_id=vacancy.id) }}
     {% endfor %}
@@ -38,13 +40,15 @@
       <p class="muted">Загрузите <a href="/resumes">резюме</a>, чтобы оценить соответствие и написать письмо.</p>
     {% endif %}
   </div>
-  <div class="card">
-    <h2>Описание</h2>
-    {% if vacancy.skills %}<p><b>Навыки:</b> {{ vacancy.skills|join(", ") }}</p>{% endif %}
-    {% if vacancy.is_partial %}<p class="muted">Показан фрагмент; полное описание загрузится при первом анализе.</p>{% endif %}
-    <div class="pre">{{ vacancy.description }}</div>
+  <div>
+    <div class="card">
+      <details {% if not analyses %}open{% endif %}><summary><b>Описание вакансии</b></summary>
+        {% if vacancy.skills %}<p><b>Навыки:</b> {{ vacancy.skills|join(", ") }}</p>{% endif %}
+        {% if vacancy.is_partial %}<p class="muted">Показан фрагмент; полное описание загрузится при первом анализе.</p>{% endif %}
+        <div class="pre">{{ vacancy.description }}</div>
+      </details>
+    </div>
+    {% for a in analyses %}{{ analysis_card(a, FEATURES.get(a.kind)) }}{% else %}<p class="muted">Результаты анализов появятся здесь.</p>{% endfor %}
   </div>
 </div>
-<h2>Результаты</h2>
-{% for a in analyses %}{{ analysis_card(a, FEATURES.get(a.kind)) }}{% else %}<p class="muted">Пока ничего не запускали.</p>{% endfor %}
 {% endblock %}

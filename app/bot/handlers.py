@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy import func, select
 
-from app.bot.api import TelegramAPI, button, clip, esc, keyboard, url_button
+from app.bot.api import TelegramAPI, TelegramError, button, clip, esc, keyboard, url_button
 from app.bot.texts import VERDICTS, salary, web_url
 from app.core.config import get_settings
 from app.core.db import session_scope
@@ -33,6 +33,8 @@ class Ctx:
     username: str | None
     args: str = ""
     callback_id: str | None = None
+    message_id: int | None = None
+    markup: dict[str, Any] | None = None
 
     async def reply(self, text: str, markup: dict[str, Any] | None = None) -> None:
         await self.api.send(self.chat_id, text, reply_markup=markup)
@@ -117,8 +119,10 @@ async def _handle_callback(api: TelegramAPI, cq: dict[str, Any]) -> None:
     chat_id = ((cq.get("message") or {}).get("chat") or {}).get("id")
     data = str(cq.get("data") or "")
     prefix, _, args = data.partition(":")
+    message = cq.get("message") or {}
     ctx = Ctx(api=api, chat_id=chat_id, user_id=_linked_user_id(chat_id) if chat_id else None,
-              username=(cq.get("from") or {}).get("username"), args=args, callback_id=cq.get("id"))
+              username=(cq.get("from") or {}).get("username"), args=args, callback_id=cq.get("id"),
+              message_id=message.get("message_id"), markup=message.get("reply_markup"))
     handler = CALLBACKS.get(prefix)
     if ctx.user_id is None or handler is None:
         await api.answer_callback(cq["id"], "Аккаунт не привязан" if ctx.user_id is None else "Устаревшая кнопка")
@@ -153,30 +157,34 @@ async def cmd_start(ctx: Ctx) -> None:
         if name is None:
             await ctx.reply("Код недействителен или устарел. Получите новый в Настройках веб-интерфейса.")
             return
-        await ctx.reply(f"Готово, чат привязан к аккаунту <b>{esc(name)}</b>.\n\n" + HELP_TEXT)
+        await ctx.reply(f"Готово, чат привязан к аккаунту <b>{esc(name)}</b>.\n\n" + help_text())
         return
     if ctx.user_id is None:
         await _not_linked(ctx)
     else:
-        await ctx.reply(HELP_TEXT)
+        await ctx.reply(help_text())
 
 
-HELP_TEXT = (
+HELP_INTRO = (
     "Что я умею:\n"
     "• пришлите <b>ссылку на вакансию</b> (hh.ru, Хабр Карьера или любой сайт) или <b>её текст</b> — "
     "оценю вакансию и соответствие вашему резюме, напишу сопроводительное;\n"
-    "• присылаю новые подходящие вакансии из ваших поисков.\n\n"
-    "/top — лучшие совпадения\n/searches — поиски и запуск\n/resumes — выбрать резюме для бота\n"
-    "/notify 80 — порог уведомлений (off — выключить)\n/usage — расходы на ИИ\n/unlink — отвязать чат"
+    "• присылаю новые подходящие вакансии из ваших поисков и напоминаю о follow-up.\n"
 )
+
+
+def help_text() -> str:
+    """Built from the command registry, so new commands appear automatically."""
+    lines = [f"/{name} — {c.description}" for name, c in COMMANDS.items() if name not in ("start", "help")]
+    return HELP_INTRO + "\n" + "\n".join(lines)
 
 
 @command("help", "Что умеет бот", public=True)
 async def cmd_help(ctx: Ctx) -> None:
-    await ctx.reply(HELP_TEXT)
+    await ctx.reply(help_text())
 
 
-@command("top", "Лучшие совпадения")
+@command("top", "лучшие совпадения")
 async def cmd_top(ctx: Ctx) -> None:
     with session_scope() as s:
         latest = (
@@ -204,34 +212,32 @@ async def cmd_top(ctx: Ctx) -> None:
     await ctx.reply("\n".join(lines), keyboard(*kb))
 
 
-@command("searches", "Мои поиски")
+@command("searches", "поиски и их запуск")
 async def cmd_searches(ctx: Ctx) -> None:
     with session_scope() as s:
         searches = list(s.scalars(select(SavedSearch).where(SavedSearch.user_id == ctx.user_id)))
         if not searches:
-            await ctx.reply("Поисков нет — создайте в веб-интерфейсе.",
-                            keyboard([url_button("Открыть", web_url("/searches"))]))
+            await ctx.reply("Поисков пока нет.", keyboard([url_button("Создать поиск", web_url("/searches"))]))
             return
         kb = [[button(f"▶️ {s_.name[:40]}", f"run:{s_.id}")] for s_ in searches[:10]]
     await ctx.reply("Какой поиск запустить? Новые подходящие вакансии пришлю сюда.", keyboard(*kb))
 
 
-@command("resumes", "Резюме для бота")
+@command("resumes", "выбрать резюме для бота")
 async def cmd_resumes(ctx: Ctx) -> None:
     with session_scope() as s:
         user = s.get(User, ctx.user_id)
         current = telegram_links.default_resume(s, user)
         resumes = list(s.scalars(select(Resume).where(Resume.user_id == ctx.user_id).order_by(Resume.id.desc())))
         if not resumes:
-            await ctx.reply("Резюме нет — загрузите в веб-интерфейсе.",
-                            keyboard([url_button("Открыть", web_url("/resumes"))]))
+            await ctx.reply("Резюме пока нет.", keyboard([url_button("Загрузить резюме", web_url("/resumes"))]))
             return
         kb = [[button(("✅ " if current and r.id == current.id else "") + r.title[:50], f"res:{r.id}")]
               for r in resumes[:10]]
     await ctx.reply("По какому резюме оценивать вакансии и писать письма?", keyboard(*kb))
 
 
-@command("notify", "Порог уведомлений")
+@command("notify", "порог уведомлений о вакансиях")
 async def cmd_notify(ctx: Ctx) -> None:
     arg = ctx.args.lower()
     with session_scope() as s:
@@ -245,12 +251,24 @@ async def cmd_notify(ctx: Ctx) -> None:
         else:
             current = (user.notify_min_score if user.notify_min_score is not None
                        else get_settings().telegram.notify_min_score)
-            msg = (f"Сейчас порог: {'выкл' if current > 100 else current}. "
-                   "Пример: /notify 80 или /notify off")
+            msg = None
+    if msg is None:
+        await ctx.reply(f"Присылать вакансии с оценкой от… Сейчас: {'выкл' if current > 100 else current}.",
+                        keyboard([button(str(v), f"nt:{v}") for v in (60, 70, 80, 90)],
+                                 [button("Не присылать", "nt:off")]))
+        return
     await ctx.reply(msg)
 
 
-@command("usage", "Расходы на ИИ")
+@callback("nt")
+async def cb_notify(ctx: Ctx) -> None:
+    value = 101 if ctx.args == "off" else _int_arg(ctx.args)
+    with session_scope() as s:
+        s.get(User, ctx.user_id).notify_min_score = min(value, 101)
+    await ctx.api.answer_callback(ctx.callback_id, "Выключено" if value > 100 else f"Порог: {value}")
+
+
+@command("usage", "расходы на ИИ в этом месяце")
 async def cmd_usage(ctx: Ctx) -> None:
     gw = get_gateway()
     spent, budget = gw.month_spent(ctx.user_id), gw.budget_for(ctx.user_id)
@@ -258,7 +276,7 @@ async def cmd_usage(ctx: Ctx) -> None:
     await ctx.reply(f"В этом месяце потрачено ${spent:.2f}{limit}.")
 
 
-@command("unlink", "Отвязать чат")
+@command("unlink", "отвязать этот чат")
 async def cmd_unlink(ctx: Ctx) -> None:
     with session_scope() as s:
         telegram_links.unlink(s, ctx.user_id)
@@ -321,13 +339,28 @@ async def cb_snooze(ctx: Ctx) -> None:
     await ctx.api.answer_callback(ctx.callback_id, "Напомню через неделю")
 
 
+STATUS_DONE = {"hidden": "🙈 Скрыто", "saved": "⭐ Сохранено", "applied": "✅ Откликнулся",
+               "rejected": "❌ Отказ", "new": "Возвращено"}
+
+
 @callback("st")
 async def cb_status(ctx: Ctx) -> None:
     status, _, vid = ctx.args.partition(":")
     with session_scope() as s:
         vacancy_svc.set_status(s, ctx.user_id, _int_arg(vid), status)
-    labels = {"hidden": "Скрыто", "saved": "Сохранено", "applied": "Отмечено: откликнулся"}
-    await ctx.api.answer_callback(ctx.callback_id, labels.get(status, "Готово"))
+    await ctx.api.answer_callback(ctx.callback_id, STATUS_DONE.get(status, "Готово"))
+    if ctx.message_id and ctx.markup:
+        # Mark the pressed vacancy in the message keyboard and offer an undo.
+        rows = []
+        for row in ctx.markup.get("inline_keyboard", []):
+            if any(b.get("callback_data", "").endswith(f":{vid}") for b in row):
+                rows.append([button(f"{STATUS_DONE.get(status, 'Готово')} · вернуть", f"st:new:{vid}")])
+            else:
+                rows.append(row)
+        try:
+            await ctx.api.edit_markup(ctx.chat_id, ctx.message_id, {"inline_keyboard": rows})
+        except TelegramError:
+            pass  # message too old to edit — the status is saved anyway
 
 
 @callback("run")

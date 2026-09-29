@@ -12,11 +12,11 @@
 {% if rows %}
 <div class="card">
 <table>
-  <tr><th>Вакансия</th><th>Зарплата</th><th>Источник</th><th>Статус</th></tr>
+  <tr><th>Вакансия</th><th>Зарплата</th><th class="hide-mobile">Источник</th><th>Статус</th></tr>
   {% for uv in rows %}{% set v = uv.vacancy %}
   <tr>
     <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a><div class="muted">{{ v.company or "" }}{% if v.location %} · {{ v.location }}{% endif %}</div></td>
-    <td>{{ v|money }}</td><td class="muted">{{ v.source }}</td><td>{{ statuses[uv.status.value] }}</td>
+    <td>{{ v|money }}</td><td class="muted hide-mobile">{{ v.source|source_title }}</td><td>{{ statuses[uv.status.value] }}</td>
   </tr>
   {% endfor %}
 </table>
@@ -31,6 +31,7 @@
       <label>Ссылка (hh.ru загрузится целиком, остальные — как текст страницы)
         <input type="url" name="url" placeholder="https://hh.ru/vacancy/123456" required></label>
       <p><button class="btn-small">Загрузить</button></p>
+      <p class="muted">…или вставьте текст вакансии в форму рядом.</p>
     </form>
     <form method="post" action="/vacancies">
       <input type="hidden" name="mode" value="text">

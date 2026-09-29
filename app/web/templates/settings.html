@@ -5,7 +5,7 @@
 <div class="card">
   <h2>Telegram</h2>
   {% if not bot_enabled %}
-    <p class="muted">Бот не настроен администратором (нужен <code>WS_TELEGRAM__BOT_TOKEN</code> в .env).</p>
+    <p class="muted">Telegram-бот пока не подключён.{% if user.is_admin %} Добавьте <code>WS_TELEGRAM__BOT_TOKEN</code> в .env и перезапустите приложение.{% else %} Обратитесь к администратору.{% endif %}</p>
   {% elif me.telegram_chat_id %}
     <p>Привязан{% if me.telegram_username %} к @{{ me.telegram_username }}{% endif %}. Бот присылает новые подходящие вакансии
       и принимает ссылки на вакансии для анализа.</p>
@@ -25,8 +25,9 @@
 
   <h2>Предпочтения</h2>
   <form method="post" action="/settings/preferences">
-    <label>Присылать вакансии с оценкой ИИ от (0–100; 101 — не присылать; пусто — {{ default_threshold }})
-      <input type="number" name="notify_min_score" min="0" max="101" value="{{ me.notify_min_score if me.notify_min_score is not none else '' }}"></label>
+    <label class="check"><input type="checkbox" name="notify_off" {% if me.notify_min_score is not none and me.notify_min_score > 100 %}checked{% endif %}> Не присылать подходящие вакансии в Telegram</label>
+    <label>Присылать вакансии с оценкой ИИ от (0–100, пусто — {{ default_threshold }})
+      <input type="number" name="notify_min_score" min="0" max="100" value="{{ me.notify_min_score if me.notify_min_score is not none and me.notify_min_score <= 100 else '' }}"></label>
     <label>Резюме для бота
       <select name="default_resume_id">
         <option value="">последнее загруженное</option>

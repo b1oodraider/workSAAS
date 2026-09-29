@@ -112,8 +112,8 @@ def build_digest(rows) -> tuple[str, dict, list[int]]:
         size += len(item)
         items.append(item)
         ids.append(uv.id)
-        kb.append([button(f"✉️ №{i}", f"cl:{v.id}"), button(f"⭐ №{i}", f"st:saved:{v.id}"),
-                   button(f"🙈 №{i}", f"st:hidden:{v.id}")])
+        kb.append([button(f"{i}. ✉️ Письмо", f"cl:{v.id}"), button(f"{i}. ⭐ Сохранить", f"st:saved:{v.id}"),
+                   button(f"{i}. 🙈", f"st:hidden:{v.id}")])
     lines = [f"🔥 <b>Новые подходящие вакансии: {len(rows)}</b>", *items]
     if len(rows) > len(ids):
         lines.append(f"\n…и ещё {len(rows) - len(ids)} — пришлю в следующий раз или смотрите /top")
@@ -172,8 +172,8 @@ async def send_reminders(api: TelegramAPI) -> int:
         for i, (_uv_id, vid, head, title, company) in enumerate(items, 1):
             lines.append(f'\n{i}. <a href="{esc(web_url(f"/vacancies/{vid}"))}">{esc(title)}</a>'
                          f"{' · ' + esc(company) if company else ''}\n{esc(head)}")
-            kb.append([button(f"✉️ Follow-up №{i}", f"fu:{vid}"), button(f"⏰ +7 дн. №{i}", f"sn:{vid}"),
-                       button(f"❌ Отказ №{i}", f"st:rejected:{vid}")])
+            kb.append([button(f"{i}. ✉️ Follow-up", f"fu:{vid}"), button(f"{i}. ⏰ Через неделю", f"sn:{vid}"),
+                       button(f"{i}. ❌ Отказ", f"st:rejected:{vid}")])
         ids = [it[0] for it in items]
         won = _claim(UserVacancy.reminded_at, ids, now)
         if len(won) != len(ids):  # another process is sending these reminders

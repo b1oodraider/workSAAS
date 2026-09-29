@@ -7,6 +7,32 @@ function copyText(id, btn) {
   });
 }
 
+// Paid LLM runs: block double submits and show progress.
+document.addEventListener("submit", (e) => {
+  const form = e.target;
+  if (form.matches("form[data-sources-required]") &&
+      !form.querySelector('input[name="sources"]:checked')) {
+    e.preventDefault();
+    alert("Выберите хотя бы один источник");
+    return;
+  }
+  if (!form.matches("form.feature, form[data-busy]")) return;
+  const btn = form.querySelector("button[type=submit], button:not([type])");
+  if (btn) {
+    if (btn.disabled) { e.preventDefault(); return; }
+    btn.dataset.label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = btn.dataset.busy || "Запускаю…";
+  }
+});
+
+// Back/forward cache restores disabled buttons: re-enable them.
+window.addEventListener("pageshow", (e) => {
+  if (!e.persisted) return;
+  document.querySelectorAll("form.feature button[disabled], form[data-busy] button[disabled]")
+    .forEach((b) => { b.disabled = false; if (b.dataset.label) b.textContent = b.dataset.label; });
+});
+
 // Job page: poll status and reload when something changes.
 document.addEventListener("DOMContentLoaded", () => {
   const el = document.querySelector("[data-job-poll]");

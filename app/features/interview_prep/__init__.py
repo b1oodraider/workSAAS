@@ -10,7 +10,9 @@ from app.llm.tasks import LLMTask
 
 
 class Params(BaseModel):
-    stage: Literal["hr_screen", "technical", "final"] = Field("technical", title="Этап")
+    stage: Literal["hr_screen", "technical", "final"] = Field(
+        "technical", title="Этап", json_schema_extra={"labels": {
+            "hr_screen": "скрининг с HR", "technical": "техническое", "final": "финальное"}})
     focus: str = Field("", title="На что сделать упор (необязательно)")
 
 

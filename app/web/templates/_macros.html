@@ -6,7 +6,9 @@
   {% if resume_id %}<input type="hidden" name="resume_id" value="{{ resume_id }}">{% endif %}
   {% if vacancy_id %}<input type="hidden" name="vacancy_id" value="{{ vacancy_id }}">{% endif %}
   <div class="row"><b>{{ feature.title }}</b> <span class="muted">{{ feature.description }}</span></div>
-  {% if resumes is not none %}
+  {% if resumes is not none and resumes|length == 1 %}
+    <input type="hidden" name="resume_id" value="{{ resumes[0].id }}">
+  {% elif resumes is not none %}
     <label>Резюме
       <select name="resume_id" required>
         {% for r in resumes %}<option value="{{ r.id }}">{{ r.title }}</option>{% endfor %}
@@ -28,7 +30,7 @@
       <label>{{ f.title }} <textarea name="p_{{ f.name }}" rows="4" placeholder="{{ f.placeholder }}">{{ f.default }}</textarea></label>
     {% elif f.type == "select" %}
       <label>{{ f.title }}
-        <select name="p_{{ f.name }}">{% for o in f.options %}<option {% if o == f.default %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
+        <select name="p_{{ f.name }}">{% for value, label in f.options %}<option value="{{ value }}" {% if value == f.default %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
       </label>
     {% elif f.type == "checkbox" %}
       <label class="check"><input type="checkbox" name="p_{{ f.name }}" {% if f.default %}checked{% endif %}> {{ f.title }}</label>
