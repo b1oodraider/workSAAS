@@ -99,7 +99,7 @@ def build_digest(rows) -> tuple[str, dict, list[int]]:
                    button(f"{i}. 🙈", f"st:hidden:{v.id}")])
     lines = [f"🔥 <b>Новые подходящие вакансии: {len(rows)}</b>", *items]
     if len(rows) > len(ids):
-        lines.append(f"\n…и ещё {len(rows) - len(ids)} — пришлю в следующий раз или смотрите /top")
+        lines.append(f"\n…и ещё {len(rows) - len(ids)} — смотрите /top")
     return "\n".join(lines), keyboard(*kb), ids
 
 
@@ -115,14 +115,20 @@ async def send_digests(api: TelegramAPI) -> int:
             rows = matches_svc.top_matches(s, user.id, min_score=threshold, unnotified=True)
             if rows:
                 plans.append((user.telegram_chat_id, rows))
-        messages = [(chat_id, *build_digest(rows)) for chat_id, rows in plans]
-    for chat_id, text, kb, ids in messages:
+        messages = []
+        for chat_id, rows in plans:
+            text, kb, ids = build_digest(rows)
+            messages.append((chat_id, text, kb, ids, [uv.id for uv, _, _ in rows if uv.id not in ids]))
+    for chat_id, text, kb, ids, rest_ids in messages:
         won = _claim(UserVacancy.notified_at, ids, utcnow())
         if len(won) != len(ids):  # another process is sending this digest
             _release(UserVacancy.notified_at, won)
             continue
         if await _deliver(api, chat_id, text, kb, UserVacancy.notified_at, won):
             sent += 1
+            # Don't drip a backlog one message per interval: the rest is available via /top.
+            if rest_ids:
+                _claim(UserVacancy.notified_at, rest_ids, utcnow())
     return sent
 
 

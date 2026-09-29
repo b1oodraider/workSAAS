@@ -341,3 +341,9 @@ async def test_doctor_config_and_llm_checks(env):
     FakeProvider.canned["doctor"] = {"ok": True, "word": "привет"}
     llm = await check_llm()
     assert len(llm) == 1 and llm[0].ok
+
+
+def test_safe_path_rejects_backslash_tricks():
+    from app.web.deps import safe_path
+
+    assert safe_path("/\\evil.com") == "/" and safe_path("//evil.com") == "/" and safe_path("/tracker") == "/tracker"

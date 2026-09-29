@@ -17,20 +17,24 @@ def run_migrations() -> None:
             # foreign keys ON, dropping e.g. "users" would cascade-delete every resume.
             # The pragma only works outside a transaction, so it goes first.
             connection.exec_driver_sql("PRAGMA foreign_keys=OFF")
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            render_as_batch=sqlite,
-            compare_type=True,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
-        connection.commit()
-        if sqlite:
-            broken = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
-            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
-            if broken:
-                raise RuntimeError(f"Foreign key violations after migration: {broken[:5]}")
+        try:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                render_as_batch=sqlite,
+                compare_type=True,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+            connection.commit()
+            if sqlite:
+                broken = connection.exec_driver_sql("PRAGMA foreign_key_check").fetchall()
+                if broken:
+                    raise RuntimeError(f"Foreign key violations after migration: {broken[:5]}")
+        finally:
+            if sqlite:
+                connection.rollback()  # leave no open transaction, so the pragma applies
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
 
 
 run_migrations()

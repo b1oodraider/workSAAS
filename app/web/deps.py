@@ -44,7 +44,8 @@ def current_user(request: Request, s: Session = Depends(db)) -> CurrentUser:
 
 def safe_path(value: str, default: str = "/") -> str:
     """Only allow local redirect targets (no open redirects)."""
-    return value if value.startswith("/") and not value.startswith("//") else default
+    ok = value.startswith("/") and not value.startswith("//") and "\\" not in value
+    return value if ok else default
 
 
 def params_from_form(model: type[BaseModel], form: Any, prefix: str = "p_") -> dict[str, Any]:

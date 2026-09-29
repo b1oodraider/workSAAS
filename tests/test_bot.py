@@ -255,20 +255,10 @@ async def test_digest_fits_telegram_limit_and_is_not_sent_twice(user_id, tg):
     text = tg.sent()[-1]["text"]
     assert len(text) <= MAX_TEXT and tg.sent()[-1].get("parse_mode") == "HTML"
     assert "&lt;&amp;&gt;" in text
-    # the rest arrives on the next ticks, each message within the limit, nothing repeated
-    seen = set()
-    for _ in range(10):
-        if not await send_digests(tg.api):
-            break
-        assert len(tg.sent()[-1]["text"]) <= MAX_TEXT
-    for p in tg.sent():
-        for row in json.loads(p["reply_markup"])["inline_keyboard"]:
-            data = row[0]["callback_data"]
-            assert data not in seen
-            seen.add(data)
+    assert "смотрите /top" in text  # the rest is not dripped one message per interval
+    assert await send_digests(tg.api) == 0
     with session_scope() as s:
         assert s.query(UserVacancy).filter(UserVacancy.notified_at.is_(None)).count() == 0
-    assert len(seen) == 10
 
 
 def test_local_time_conversion(env):
@@ -294,8 +284,9 @@ async def test_notify_buttons_and_status_undo(user_id, linked, tg):
     update = cb(f"st:hidden:{vid}")
     update["callback_query"]["message"].update({
         "message_id": 42,
-        "reply_markup": {"inline_keyboard": [[{"text": "x", "callback_data": f"cl:{vid}"}],
-                                             [{"text": "y", "callback_data": "cl:999"}]]},
+        "reply_markup": {"inline_keyboard": [
+            [{"text": "x", "callback_data": f"cl:{vid}"}, {"text": "h", "callback_data": f"st:hidden:{vid}"}],
+            [{"text": "y", "callback_data": "cl:999"}, {"text": "h", "callback_data": "st:hidden:999"}]]},
     })
     await handle_update(tg.api, update)
     edits = [p for m, p in tg.calls if m == "editMessageReplyMarkup"]
@@ -312,3 +303,28 @@ async def test_help_lists_registered_commands(user_id, linked, tg):
     text = tg.sent()[-1]["text"]
     for name in ("top", "searches", "resumes", "notify", "usage", "unlink"):
         assert f"/{name}" in text
+
+
+async def test_undo_on_single_card_keeps_letter_button(user_id, linked, tg):
+    from app.bot.handlers import vacancy_keyboard
+
+    await handle_update(tg.api, msg(f"/start {linked}"))
+    with session_scope() as s:
+        vid = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+    update = cb(f"st:saved:{vid}")
+    update["callback_query"]["message"].update({"message_id": 7, "reply_markup": vacancy_keyboard(vid)})
+    await handle_update(tg.api, update)
+    rows = json.loads([p for m, p in tg.calls if m == "editMessageReplyMarkup"][-1]["reply_markup"])["inline_keyboard"]
+    assert [r[0]["callback_data"] for r in rows] == [f"cl:{vid}", f"st:new:{vid}"]
+
+
+async def test_digest_backlog_not_dripped(user_id, tg):
+    with session_scope() as s:
+        s.get(User, user_id).telegram_chat_id = CHAT
+        ids = [vacancy_svc.create_manual(s, user_id, title=f"V{i}", text=VACANCY_TEXT + str(i)).id for i in range(12)]
+    with session_scope() as s:
+        for vid in ids:
+            s.add(Analysis(user_id=user_id, kind="match", vacancy_id=vid, output={"summary": "ok"},
+                           score=90, provider="fake", model="m", prompt_version="2"))
+    assert await send_digests(tg.api) == 1
+    assert await send_digests(tg.api) == 0

@@ -337,12 +337,16 @@ async def cb_status(ctx: Ctx) -> None:
     await ctx.api.answer_callback(ctx.callback_id, STATUS_DONE.get(status, "Готово"))
     if ctx.message_id and ctx.markup:
         # Mark the pressed vacancy in the message keyboard and offer an undo.
-        rows = []
+        rows, replaced = [], False
+        undo = [button(f"{STATUS_DONE.get(status, 'Готово')} · вернуть", f"st:new:{vid}")]
         for row in ctx.markup.get("inline_keyboard", []):
-            if any(b.get("callback_data", "").endswith(f":{vid}") for b in row):
-                rows.append([button(f"{STATUS_DONE.get(status, 'Готово')} · вернуть", f"st:new:{vid}")])
-            else:
+            is_status_row = any(b.get("callback_data", "").startswith("st:") and
+                                b.get("callback_data", "").endswith(f":{vid}") for b in row)
+            if not is_status_row:
                 rows.append(row)
+            elif not replaced:
+                rows.append(undo)
+                replaced = True
         try:
             await ctx.api.edit_markup(ctx.chat_id, ctx.message_id, {"inline_keyboard": rows})
         except TelegramError:

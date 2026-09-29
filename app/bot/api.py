@@ -56,9 +56,16 @@ _TOKEN_RE = re.compile(r"bot\d{5,}:[\w-]{20,}")
 
 class RedactTokenFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        msg = record.getMessage()
-        if _TOKEN_RE.search(msg):
-            record.msg, record.args = _TOKEN_RE.sub("bot<redacted>", msg), ()
+        try:
+            msg = record.getMessage()
+            if _TOKEN_RE.search(msg):
+                record.msg, record.args = _TOKEN_RE.sub("bot<redacted>", msg), ()
+            if record.exc_info and not record.exc_text:
+                text = logging.Formatter().formatException(record.exc_info)
+                if _TOKEN_RE.search(text):
+                    record.exc_text = _TOKEN_RE.sub("bot<redacted>", text)
+        except Exception:  # noqa: BLE001 - a filter must never break logging
+            pass
         return True
 
 
