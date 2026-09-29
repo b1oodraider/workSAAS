@@ -18,7 +18,7 @@ FEATURE = register(
         title="Ответ рекрутеру",
         description="Черновик ответа на сообщение HR и ответы на скрининг-вопросы (ожидания, сроки, формат).",
         subject="resume_vacancy",
-        task=LLMTask(name="recruiter_reply", version="1", output=RecruiterReply,
+        task=LLMTask(name="recruiter_reply", version="2", output=RecruiterReply,
                      template_dir=feature_dir(__file__), max_tokens=6000),
         params_model=Params,
         order=65,

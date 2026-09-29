@@ -99,6 +99,8 @@ class LLMSettings(BaseModel):
             "match": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
             "resume_profile": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
             "vacancy_review": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
+            "follow_up": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
+            "recruiter_reply": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
         }
     )
     # Overrides / additions to app.llm.pricing.DEFAULT_PRICES.

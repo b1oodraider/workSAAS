@@ -95,6 +95,16 @@ provider = "anthropic"
 model = "claude-opus-5-5"
 effort = "low"
 
+[llm.routes.follow_up]        # короткие письма
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+
+[llm.routes.recruiter_reply]
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+
 # [llm.routes.cover_letter]
 # provider = "anthropic"
 # model = "claude-opus-5-5"

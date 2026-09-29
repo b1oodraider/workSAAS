@@ -18,6 +18,7 @@
   <a href="/jobs">Задачи</a>
   <a href="/usage">Расходы</a>
   <a href="/settings">Настройки</a>
+  {% if user.is_admin %}<a href="/admin">Админка</a>{% endif %}
   <span class="spacer"></span>
   <span class="muted">{{ user.username }}</span>
   <form method="post" action="/logout" class="inline"><button class="btn-link">Выйти</button></form>

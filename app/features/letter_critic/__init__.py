@@ -29,7 +29,7 @@ FEATURE = register(
         title="Проверить письмо",
         description="Критик: разбор вашего (или сгенерированного) письма глазами рекрутера и исправленная версия.",
         subject="resume_vacancy",
-        task=LLMTask(name="letter_critic", version="1", output=LetterCritique,
+        task=LLMTask(name="letter_critic", version="2", output=LetterCritique,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         params_model=Params,
         context_builder=_context,

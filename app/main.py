@@ -21,7 +21,7 @@ from app.jobs.queue import Worker
 from app.jobs.scheduler import Scheduler
 from app.services.errors import NotFound
 from app.web.deps import LoginRequired
-from app.web.routes import analyses, auth, jobs, resumes, searches, tracker, usage, vacancies
+from app.web.routes import admin, analyses, auth, jobs, resumes, searches, tracker, usage, vacancies
 from app.web.routes import settings as settings_routes
 from app.web.templating import WEB_DIR, render
 
@@ -65,7 +65,7 @@ def create_app(*, start_background: bool | None = None) -> FastAPI:
                        max_age=60 * 60 * 24 * 30, https_only=settings.session_https_only)
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
-    for module in (auth, resumes, vacancies, analyses, searches, tracker, jobs, usage, settings_routes):
+    for module in (auth, resumes, vacancies, analyses, searches, tracker, jobs, usage, settings_routes, admin):
         app.include_router(module.router)
 
     @app.get("/")

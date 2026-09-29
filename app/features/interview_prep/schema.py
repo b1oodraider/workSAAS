@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 class LikelyQuestion(BaseModel):
     question: str
     why_they_ask: str = Field(description="Что на самом деле проверяют этим вопросом")
-    answer_outline: str = Field(description="План ответа по STAR, только на фактах из резюме; если фактов нет — так и скажи")
+    answer_outline: str = Field(
+        description="План ответа по STAR в 3-5 коротких пунктах, только на фактах из резюме; если фактов нет — так и скажи")
 
 
 class Topic(BaseModel):

@@ -281,3 +281,35 @@ def test_tracker_status_flow(user_id):
         _, uv = vacancy_svc.get_for_user(s, user_id, vid)
         assert [h["status"] for h in uv.status_history] == ["applied", "interview"]
         assert uv.applied_at is not None and uv.next_action_at is None
+
+
+def test_admin_pages_and_permissions(user_id):
+    from app.core.security import hash_password
+    from app.main import create_app
+    from app.models import User
+
+    with TestClient(create_app(start_background=False)) as client:
+        client.post("/login", data={"username": "alice", "password": "password123"})
+        assert client.get("/admin").status_code == 200
+        r = client.post("/admin/users", data={"username": "carol", "budget": "3"})
+        assert "Пароль для <b>carol</b>" in r.text
+        with session_scope() as s:
+            carol = s.query(User).filter_by(username="carol").one()
+            assert carol.monthly_budget_usd == 3.0
+            s.add(User(username="dave", password_hash=hash_password("password123")))
+        client.post("/logout")
+        client.post("/login", data={"username": "dave", "password": "password123"})
+        assert client.get("/admin").status_code == 403
+        assert client.post(f"/admin/users/{carol.id}", data={"action": "block"}).status_code == 403
+
+
+async def test_match_of_another_resume_is_not_borrowed(user_id, resume_id):
+    with session_scope() as s:
+        vacancy_id = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+        other = resume_svc.create(s, user_id, title="CV2", text=RESUME_TEXT + " Второе резюме.").id
+    FakeProvider.canned["match"] = {"summary": "s", "matched": [], "gaps": [], "risks": [],
+                                    "talking_points": ["ФАКТ ИЗ ДРУГОГО РЕЗЮМЕ"], "score": 70,
+                                    "verdict": "good", "recommendation": "apply"}
+    await analysis_svc.run_analysis(user_id, "match", resume_id=other, vacancy_id=vacancy_id)
+    await analysis_svc.run_analysis(user_id, "tailor_resume", resume_id=resume_id, vacancy_id=vacancy_id)
+    assert "ФАКТ ИЗ ДРУГОГО РЕЗЮМЕ" not in FakeProvider.calls[-1].user

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Администрирование</h1>
+{% if new_password %}
+<div class="flash">Пароль для <b>{{ new_password.username }}</b>: <code>{{ new_password.password }}</code> — передайте его, больше он показан не будет.</div>
+{% endif %}
+<div class="card">
+  <h2>Пользователи</h2>
+  <table>
+    <tr><th>Логин</th><th>Потрачено в месяце</th><th>Бюджет, $</th><th>Telegram</th><th></th></tr>
+    {% for row in users %}{% set u = row.user %}
+    <tr>
+      <td>{{ u.username }}{% if u.is_admin %} <span class="tag">admin</span>{% endif %}{% if not u.is_active %} <span class="tag">заблокирован</span>{% endif %}</td>
+      <td>${{ "%.2f"|format(row.spent) }}</td>
+      <td><form method="post" action="/admin/users/{{ u.id }}" class="row">
+        <input type="hidden" name="action" value="budget">
+        <input type="text" name="budget" value="{{ u.monthly_budget_usd if u.monthly_budget_usd is not none else '' }}" placeholder="по умолчанию" style="width:110px">
+        <button class="btn-small secondary">OK</button></form></td>
+      <td>{{ "да" if u.telegram_chat_id else "—" }}</td>
+      <td class="row">
+        <form method="post" action="/admin/users/{{ u.id }}" onsubmit="return confirm('Сбросить пароль?')">
+          <input type="hidden" name="action" value="reset_password"><button class="btn-small secondary">Сбросить пароль</button></form>
+        {% if u.id != user.id %}
+        <form method="post" action="/admin/users/{{ u.id }}">
+          <input type="hidden" name="action" value="{{ 'block' if u.is_active else 'unblock' }}">
+          <button class="btn-small {{ 'danger' if u.is_active else 'secondary' }}">{{ "Заблокировать" if u.is_active else "Разблокировать" }}</button></form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <h2>Новый пользователь</h2>
+  <form method="post" action="/admin/users" class="row">
+    <input type="text" name="username" placeholder="логин" required style="flex:1">
+    <input type="text" name="password" placeholder="пароль (пусто — сгенерировать)" style="flex:1">
+    <input type="text" name="budget" placeholder="бюджет $/мес (пусто — по умолчанию; 0 — без лимита)" style="flex:1">
+    <label class="check"><input type="checkbox" name="is_admin" value="true"> админ</label>
+    <button class="btn-small">Создать</button>
+  </form>
+</div>
+<div class="cols">
+<div class="card">
+  <h2>Источники за 7 дней</h2>
+  <p class="muted">Запусков поиска: {{ runs.runs }}, упавших целиком: {{ runs.failed_runs }}</p>
+  <table>
+    <tr><th>Источник</th><th>Включён</th><th>Ошибок</th></tr>
+    {% for src in sources %}
+    <tr><td>{{ src.title }}</td><td>{{ "да" if src.enabled else "нет" }}</td>
+        <td>{{ src.errors }}{% if src.last_error %}<div class="muted">{{ src.last_error[:160] }}</div>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+<div class="card">
+  <h2>LLM за 7 дней</h2>
+  {% if llm %}
+  <table>
+    <tr><th>Провайдер / модель</th><th>Вызовов</th><th>Ошибок</th><th>Среднее время</th><th>$</th></tr>
+    {% for r in llm %}
+    <tr><td>{{ r.provider }}<div class="muted">{{ r.model }}</div></td><td>{{ r.calls }}</td><td>{{ r.failed }}</td>
+        <td>{{ r.avg_latency_s }} с</td><td>{{ "%.2f"|format(r.cost) }}</td></tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">Вызовов не было.</p>{% endif %}
+</div>
+</div>
+{% endblock %}

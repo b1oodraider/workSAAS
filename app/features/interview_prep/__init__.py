@@ -20,7 +20,7 @@ FEATURE = register(
         title="Подготовка к интервью",
         description="Вероятные вопросы с планом ответа по вашему опыту, темы для повторения, вопросы работодателю.",
         subject="resume_vacancy",
-        task=LLMTask(name="interview_prep", version="1", output=InterviewPrep,
+        task=LLMTask(name="interview_prep", version="2", output=InterviewPrep,
                      template_dir=feature_dir(__file__), max_tokens=10000),
         params_model=Params,
         context_builder=lambda s, uid, r, v, p: pair_context(s, uid, r, v, "match", "vacancy_review"),

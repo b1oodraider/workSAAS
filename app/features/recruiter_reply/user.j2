@@ -3,7 +3,10 @@
 {{ params.message }}
 </user_text>
 {% if params.goal %}
-Цель кандидата: {{ params.goal }}
+Цель кандидата:
+<user_text>
+{{ params.goal }}
+</user_text>
 {% endif %}
 
 {% include "_pair.j2" %}

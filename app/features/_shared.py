@@ -12,9 +12,11 @@ from app.models import Analysis
 
 
 def latest_output(s: Session, user_id: int, kind: str, *, resume_id: int | None = None,
-                  vacancy_id: int | None = None) -> dict[str, Any] | None:
+                  vacancy_id: int | None = None, vacancy_level: bool = False) -> dict[str, Any] | None:
     q = select(Analysis).where(Analysis.user_id == user_id, Analysis.kind == kind)
-    if resume_id is not None:
+    if vacancy_level:
+        q = q.where(Analysis.resume_id.is_(None))
+    elif resume_id is not None:
         q = q.where(Analysis.resume_id == resume_id)
     if vacancy_id is not None:
         q = q.where(Analysis.vacancy_id == vacancy_id)
@@ -27,7 +29,9 @@ def pair_context(s: Session, user_id: int, resume, vacancy, *kinds: str) -> dict
     ctx: dict[str, Any] = {}
     for kind in kinds:
         out = latest_output(s, user_id, kind, resume_id=resume.id, vacancy_id=vacancy.id)
-        if out is None:  # vacancy-level analyses (vacancy_review) have no resume
-            out = latest_output(s, user_id, kind, vacancy_id=vacancy.id)
+        if out is None:
+            # Vacancy-level analyses (vacancy_review) have no resume. Never fall back to an
+            # analysis made for another resume: its "facts" would leak into this one.
+            out = latest_output(s, user_id, kind, vacancy_id=vacancy.id, vacancy_level=True)
         ctx[kind] = out
     return ctx
