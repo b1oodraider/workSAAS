@@ -13,10 +13,20 @@
       </select>
     </label>
   {% endif %}
-  {% if fields %}
+  {% set required = fields|selectattr("required")|list %}
+  {% for f in required %}
+    <label>{{ f.title }}
+      {% if f.type == "textarea" %}<textarea name="p_{{ f.name }}" rows="6" required placeholder="{{ f.placeholder }}"></textarea>
+      {% else %}<input type="text" name="p_{{ f.name }}" required placeholder="{{ f.placeholder }}">{% endif %}
+    </label>
+  {% endfor %}
+  {% set optional = fields|rejectattr("required")|list %}
+  {% if optional %}
   <details><summary>Параметры</summary>
-  {% for f in fields %}
-    {% if f.type == "select" %}
+  {% for f in optional %}
+    {% if f.type == "textarea" %}
+      <label>{{ f.title }} <textarea name="p_{{ f.name }}" rows="4" placeholder="{{ f.placeholder }}">{{ f.default }}</textarea></label>
+    {% elif f.type == "select" %}
       <label>{{ f.title }}
         <select name="p_{{ f.name }}">{% for o in f.options %}<option {% if o == f.default %}selected{% endif %}>{{ o }}</option>{% endfor %}</select>
       </label>

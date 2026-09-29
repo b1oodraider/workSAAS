@@ -31,9 +31,15 @@ def features_for(subject: Subject, *, include_hidden: bool = False) -> list[Anal
 # --- feature modules (each calls register() on import) ---------------------
 from app.features import (  # noqa: E402,F401
     cover_letter,
+    follow_up,
+    interview_prep,
+    letter_critic,
     match,
+    offer_negotiation,
+    recruiter_reply,
     resume_profile,
     resume_review,
+    tailor_resume,
     vacancy_review,
 )
 

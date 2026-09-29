@@ -22,7 +22,13 @@ def parse_params(feature: AnalysisFeature, raw: dict[str, Any]) -> BaseModel:
     try:
         return feature.params_model.model_validate(raw)
     except ValidationError as exc:
-        raise ValidationFailed(f"Некорректные параметры: {exc.errors()[0]['msg']}") from exc
+        err = exc.errors()[0]
+        name = str(err["loc"][0]) if err.get("loc") else ""
+        field = feature.params_model.model_fields.get(name)
+        title = (field.title if field else None) or name
+        if err.get("type") == "missing":
+            raise ValidationFailed(f"Заполните поле «{title}»") from exc
+        raise ValidationFailed(f"Поле «{title}»: {err['msg']}") from exc
 
 
 def _load_subjects(

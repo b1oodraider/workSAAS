@@ -1,0 +1,10 @@
+<p>{{ o.assessment }}</p>
+<div class="cols">
+<div><h4>Аргументы для торга</h4><ul>{% for x in o.leverage %}<li>{{ x }}</li>{% endfor %}</ul></div>
+<div><h4>Риски</h4><ul>{% for x in o.risks %}<li>{{ x }}</li>{% endfor %}</ul></div>
+</div>
+<h4>Уточнить</h4><ul>{% for q in o.questions_to_ask %}<li>{{ q }}</li>{% endfor %}</ul>
+{% if o.red_lines %}<h4>Красные линии</h4><ul>{% for x in o.red_lines %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+<h4>Ответ на оффер</h4>
+<div class="letter copyable" id="of-{{ a.id }}">{{ o.counter_script }}</div>
+<button type="button" class="btn-small" onclick="copyText('of-{{ a.id }}', this)">Скопировать</button>

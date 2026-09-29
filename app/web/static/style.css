@@ -61,4 +61,8 @@ details > summary { cursor: pointer; color: var(--accent); margin: 6px 0; }
            border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .status-done { color: var(--high); } .status-failed { color: var(--low); } .status-running, .status-queued { color: var(--mid); }
+.board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+@media (max-width: 900px) { .board { grid-template-columns: 1fr; } }
+.column h2 { margin-top: 0; font-size: 1rem; }
+.tile { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin-bottom: 8px; background: var(--bg); }
 .login { max-width: 360px; margin: 10vh auto; }

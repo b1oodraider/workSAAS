@@ -1,0 +1,9 @@
+Сообщение рекрутера:
+<user_text>
+{{ params.message }}
+</user_text>
+{% if params.goal %}
+Цель кандидата: {{ params.goal }}
+{% endif %}
+
+{% include "_pair.j2" %}

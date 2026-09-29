@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import ipaddress
 import re
+from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 
 import logging
@@ -121,14 +122,77 @@ def get_for_user(s: Session, user_id: int, vacancy_id: int) -> tuple[Vacancy, Us
     return uv.vacancy, uv
 
 
+# After applying, remind about a follow-up if there is no answer in this many days.
+FOLLOW_UP_AFTER = timedelta(days=7)
+ACTIVE_STATUSES = (UserVacancyStatus.applied, UserVacancyStatus.interview, UserVacancyStatus.offer)
+
+
 def set_status(s: Session, user_id: int, vacancy_id: int, status: str, notes: str | None = None) -> None:
     _, uv = get_for_user(s, user_id, vacancy_id)
     try:
-        uv.status = UserVacancyStatus(status)
+        new = UserVacancyStatus(status)
     except ValueError as exc:
         raise ValidationFailed("Неизвестный статус") from exc
     if notes is not None:
         uv.notes = notes
+    if new == uv.status:
+        return
+    now = utcnow()
+    uv.status = new
+    uv.status_history = [*(uv.status_history or []), {"status": new.value, "at": now.isoformat(timespec="seconds")}]
+    if new == UserVacancyStatus.applied:
+        uv.applied_at = uv.applied_at or now
+        uv.next_action_at = now + FOLLOW_UP_AFTER
+        uv.next_action_note = "Нет ответа? Напомнить о себе"
+    elif new in (UserVacancyStatus.interview, UserVacancyStatus.offer):
+        uv.next_action_at, uv.next_action_note = None, ""
+    elif new in (UserVacancyStatus.rejected, UserVacancyStatus.hidden):
+        uv.next_action_at, uv.next_action_note = None, ""
+    uv.reminded_at = None
+
+
+def set_next_action(s: Session, user_id: int, vacancy_id: int, when: datetime | None, note: str = "") -> None:
+    _, uv = get_for_user(s, user_id, vacancy_id)
+    uv.next_action_at = when
+    uv.next_action_note = note.strip()[:300]
+    uv.reminded_at = None
+
+
+def snooze(s: Session, user_id: int, vacancy_id: int, days: int = 7) -> None:
+    _, uv = get_for_user(s, user_id, vacancy_id)
+    uv.next_action_at = utcnow() + timedelta(days=days)
+    uv.reminded_at = None
+
+
+def tracker(s: Session, user_id: int) -> dict:
+    """Applications grouped by status + funnel numbers."""
+    rows = list(s.scalars(
+        select(UserVacancy).where(UserVacancy.user_id == user_id,
+                                  UserVacancy.status.in_([st.value for st in
+                                                          (UserVacancyStatus.saved, *ACTIVE_STATUSES,
+                                                           UserVacancyStatus.rejected)]))
+        .order_by(UserVacancy.next_action_at.is_(None), UserVacancy.next_action_at, UserVacancy.id.desc())
+    ))
+    columns: dict[str, list[UserVacancy]] = {st: [] for st in ("saved", "applied", "interview", "offer", "rejected")}
+    for uv in rows:
+        columns[uv.status.value].append(uv)
+
+    def reached(status: str) -> int:
+        return sum(1 for uv in rows if any(h.get("status") == status for h in uv.status_history or [])
+                   or uv.status.value == status)
+
+    applied = reached("applied")
+    return {
+        "columns": columns,
+        "due": [uv for uv in rows if uv.next_action_at and uv.next_action_at <= utcnow()],
+        "funnel": {
+            "applied": applied,
+            "interview": reached("interview"),
+            "offer": reached("offer"),
+            "rejected": reached("rejected"),
+            "interview_rate": round(100 * reached("interview") / applied) if applied else None,
+        },
+    }
 
 
 def to_prompt(v: Vacancy) -> str:

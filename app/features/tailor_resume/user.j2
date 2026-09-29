@@ -1,0 +1,9 @@
+{% include "_pair.j2" %}
+{% if match %}
+
+<match_analysis>
+Что подчеркнуть: {{ match.talking_points|join("; ") }}
+Пробелы: {% for g in match.gaps %}{{ g.requirement }} ({{ g.importance }}){% if not loop.last %}; {% endif %}{% endfor %}
+
+</match_analysis>
+{% endif %}

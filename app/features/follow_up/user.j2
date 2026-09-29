@@ -1,0 +1,14 @@
+Ситуация: {{ params.situation }}.
+{% if params.details %}Подробности от кандидата:
+<user_text>
+{{ params.details }}
+</user_text>
+{% endif %}
+
+{% include "_pair.j2" %}
+{% if match %}
+
+<match_analysis>
+Что подчеркнуть: {{ match.talking_points|join("; ") }}
+</match_analysis>
+{% endif %}

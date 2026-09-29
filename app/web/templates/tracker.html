@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Отклики</h1>
+{% set f = data.funnel %}
+<div class="card row">
+  <span>Откликов: <b>{{ f.applied }}</b></span>
+  <span>Собеседований: <b>{{ f.interview }}</b>{% if f.interview_rate is not none %} <span class="muted">({{ f.interview_rate }}% от откликов)</span>{% endif %}</span>
+  <span>Офферов: <b>{{ f.offer }}</b></span>
+  <span>Отказов: <b>{{ f.rejected }}</b></span>
+</div>
+
+{% if data.due %}
+<div class="card">
+  <h2>Пора действовать</h2>
+  <table>
+  {% for uv in data.due %}{% set v = uv.vacancy %}
+    <tr><td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a><div class="muted">{{ v.company or "" }}</div></td>
+        <td>{{ uv.next_action_note or "Следующий шаг" }}<div class="muted">с {{ uv.next_action_at|dt }}</div></td>
+        <td><a class="btn btn-small" href="/vacancies/{{ v.id }}#more">Follow-up письмо</a></td></tr>
+  {% endfor %}
+  </table>
+</div>
+{% endif %}
+
+<div class="board">
+{% for status, items in data.columns.items() %}
+  <div class="card column">
+    <h2>{{ statuses[status] }} <span class="muted">{{ items|length }}</span></h2>
+    {% for uv in items %}{% set v = uv.vacancy %}
+      <div class="tile">
+        <a href="/vacancies/{{ v.id }}">{{ v.title }}</a>
+        <div class="muted">{{ v.company or "" }}{% if uv.applied_at %} · отклик {{ uv.applied_at.strftime("%d.%m") }}{% endif %}</div>
+        {% if uv.next_action_at %}<div class="muted">⏰ {{ uv.next_action_at.strftime("%d.%m") }} {{ uv.next_action_note }}</div>{% endif %}
+      </div>
+    {% else %}<p class="muted">пусто</p>{% endfor %}
+  </div>
+{% endfor %}
+</div>
+<p class="muted">Статус меняется в карточке вакансии. После «откликнулся» через 7 дней появится напоминание (и в Telegram, если он привязан).</p>
+{% endblock %}

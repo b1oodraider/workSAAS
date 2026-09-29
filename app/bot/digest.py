@@ -51,6 +51,49 @@ def build_digest(rows) -> tuple[str, dict]:
     return "\n".join(lines), keyboard(*kb)
 
 
+REMINDER_TEXTS = {
+    "applied": "Прошла неделя с отклика, а ответа нет. Напомнить о себе?",
+    "interview": "Напоминание по собеседованию",
+    "offer": "Напоминание по офферу",
+}
+
+
+async def send_reminders(api: TelegramAPI) -> int:
+    """Tracker reminders: next_action_at has come (e.g. a week without a reply)."""
+    now = utcnow()
+    sent = 0
+    with session_scope() as s:
+        rows = s.execute(
+            select(UserVacancy, Vacancy, User)
+            .join(Vacancy, Vacancy.id == UserVacancy.vacancy_id)
+            .join(User, User.id == UserVacancy.user_id)
+            .where(User.telegram_chat_id.is_not(None), User.is_active.is_(True),
+                   UserVacancy.next_action_at <= now, UserVacancy.reminded_at.is_(None),
+                   UserVacancy.status.in_(["applied", "interview", "offer"]))
+            .order_by(UserVacancy.next_action_at).limit(50)
+        ).all()
+        plans = []
+        for uv, v, user in rows:
+            head = uv.next_action_note or REMINDER_TEXTS.get(uv.status.value, "Напоминание")
+            text = (f"⏰ {esc(head)}\n\n<b>{esc(v.title)}</b> · {esc(v.company or '')}\n"
+                    f'<a href="{esc(web_url(f"/vacancies/{v.id}"))}">карточка вакансии</a>')
+            kb = keyboard(
+                [button("✉️ Follow-up письмо", f"fu:{v.id}")],
+                [button("⏰ Через неделю", f"sn:{v.id}"), button("❌ Отказ", f"st:rejected:{v.id}")],
+            )
+            plans.append((user.telegram_chat_id, text, kb, uv.id))
+    for chat_id, text, kb, uv_id in plans:
+        try:
+            await api.send(chat_id, text, reply_markup=kb)
+        except TelegramError as exc:
+            log.warning("reminder to %s failed: %s", chat_id, exc)
+            continue
+        with session_scope() as s:
+            s.get(UserVacancy, uv_id).reminded_at = utcnow()
+        sent += 1
+    return sent
+
+
 async def send_digests(api: TelegramAPI) -> int:
     default_threshold = get_settings().telegram.notify_min_score
     sent = 0

@@ -1,0 +1,6 @@
+<p>{{ o.understanding }}</p>
+<div class="letter copyable" id="rr-{{ a.id }}">{{ o.reply }}</div>
+<button type="button" class="btn-small" onclick="copyText('rr-{{ a.id }}', this)">Скопировать</button>
+{% if o.answers %}<h4>Ответы на вопросы</h4>{% for x in o.answers %}<div class="issue sev-minor"><b>{{ x.question }}</b><div>{{ x.answer }}</div></div>{% endfor %}{% endif %}
+{% if o.questions_to_clarify %}<h4>Уточнить у рекрутера</h4><ul>{% for q in o.questions_to_clarify %}<li>{{ q }}</li>{% endfor %}</ul>{% endif %}
+{% if o.watch_out %}<h4>Осторожно</h4><ul>{% for w in o.watch_out %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}

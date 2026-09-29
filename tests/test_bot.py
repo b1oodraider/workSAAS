@@ -160,3 +160,28 @@ async def test_top_and_usage_commands(user_id, linked, tg):
     assert "потрачено $0.00" in tg.sent()[-1]["text"]
     await handle_update(tg.api, msg("/resumes"))
     assert json.loads(tg.sent()[-1]["reply_markup"])["inline_keyboard"][0][0]["text"] == "✅ CV"
+
+
+async def test_tracker_reminder_and_follow_up(user_id, linked, tg):
+    from app.bot.digest import send_reminders
+
+    await handle_update(tg.api, msg(f"/start {linked}"))
+    with session_scope() as s:
+        vid = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+        vacancy_svc.set_status(s, user_id, vid, "applied")
+        _, uv = vacancy_svc.get_for_user(s, user_id, vid)
+        uv.next_action_at = utcnow() - timedelta(minutes=1)
+    assert await send_reminders(tg.api) == 1
+    assert "Напомнить о себе" in tg.sent()[-1]["text"]
+    assert await send_reminders(tg.api) == 0
+
+    await handle_update(tg.api, cb(f"sn:{vid}"))
+    with session_scope() as s:
+        _, uv = vacancy_svc.get_for_user(s, user_id, vid)
+        assert uv.next_action_at > utcnow() and uv.reminded_at is None
+
+    FakeProvider.canned["follow_up"] = {"subject": "Напоминаю о себе", "body": "Добрый день!",
+                                        "when_to_send": "утром", "tips": []}
+    await handle_update(tg.api, cb(f"fu:{vid}"))
+    await drain()
+    assert "Напоминаю о себе" in tg.sent()[-1]["text"]

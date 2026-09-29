@@ -55,6 +55,7 @@ class UserVacancyStatus(str, enum.Enum):
     saved = "saved"
     applied = "applied"
     interview = "interview"
+    offer = "offer"
     rejected = "rejected"
     hidden = "hidden"
 
@@ -78,5 +79,12 @@ class UserVacancy(TimestampMixin, Base):
     notes: Mapped[str] = mapped_column(Text, default="")
     # When the user was notified (Telegram digest) about this vacancy.
     notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # Application tracking.
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    next_action_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
+    next_action_note: Mapped[str] = mapped_column(String(300), default="")
+    reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # [{"status": "applied", "at": "2026-09-29T10:00:00"}, ...]
+    status_history: Mapped[list[dict]] = mapped_column(JSON, default=list)
 
     vacancy: Mapped[Vacancy] = relationship(lazy="joined")

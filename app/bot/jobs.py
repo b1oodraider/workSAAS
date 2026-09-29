@@ -84,15 +84,22 @@ async def bot_vacancy(ctx: JobContext) -> dict:
     return await _run(ctx, body)
 
 
+# Features whose output has "subject" + "body" and can be sent as a ready message.
+LETTER_KINDS = ("cover_letter", "follow_up")
+
+
 @job_handler("bot_letter")
 async def bot_letter(ctx: JobContext) -> dict:
     async def body() -> dict:
         vacancy_id = int(ctx.payload["vacancy_id"])
+        kind = ctx.payload.get("kind", "cover_letter")
+        if kind not in LETTER_KINDS:
+            raise JobError(f"неизвестный тип письма {kind}")
         resume_id = _default_resume_id(ctx.user_id)
         if resume_id is None:
             raise JobError("нет резюме — загрузите его в веб-интерфейсе")
-        a = await analysis_svc.run_analysis(ctx.user_id, "cover_letter", resume_id=resume_id,
-                                            vacancy_id=vacancy_id)
+        a = await analysis_svc.run_analysis(ctx.user_id, kind, resume_id=resume_id,
+                                            vacancy_id=vacancy_id, params=ctx.payload.get("params"))
         o = a.output
         parts = [f"✉️ <b>{esc(o.get('subject', ''))}</b>", f"<pre>{esc(o.get('body', ''))}</pre>"]
         if o.get("warnings"):

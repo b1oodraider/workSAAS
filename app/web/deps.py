@@ -8,6 +8,7 @@ from typing import Any, get_args, get_origin
 
 from fastapi import Depends, Request
 from pydantic import BaseModel
+from pydantic_core import PydanticUndefined
 from sqlalchemy.orm import Session
 
 from app.core.db import session_scope
@@ -66,12 +67,17 @@ def form_fields(model: type[BaseModel]) -> list[dict[str, Any]]:
     fields = []
     for name, field in model.model_fields.items():
         ann = field.annotation
+        extra = field.json_schema_extra if isinstance(field.json_schema_extra, dict) else {}
         item: dict[str, Any] = {
             "name": name,
             "title": field.title or name,
-            "default": field.default if field.default is not None else "",
+            "default": field.default if field.default not in (None, PydanticUndefined) else "",
+            "required": field.is_required(),
+            "placeholder": extra.get("placeholder", ""),
         }
-        if get_origin(ann) is not None and get_args(ann) and all(isinstance(a, str) for a in get_args(ann)):
+        if extra.get("widget") == "textarea":
+            item["type"] = "textarea"
+        elif get_origin(ann) is not None and get_args(ann) and all(isinstance(a, str) for a in get_args(ann)):
             item["type"] = "select"
             item["options"] = list(get_args(ann))
         elif ann is bool:

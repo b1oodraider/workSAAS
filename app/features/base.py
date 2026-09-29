@@ -48,6 +48,8 @@ class AnalysisFeature:
     # Hidden features run internally (e.g. resume_profile) and get no UI button.
     hidden: bool = False
     order: int = 100
+    # "main" buttons are always visible; "more" ones are folded under «Ещё».
+    group: Literal["main", "more"] = "main"
 
     @property
     def view_template(self) -> str:

@@ -298,6 +298,24 @@ async def cb_letter(ctx: Ctx) -> None:
     await ctx.api.answer_callback(ctx.callback_id, "Пишу письмо…")
 
 
+@callback("fu")
+async def cb_follow_up(ctx: Ctx) -> None:
+    vacancy_id = _int_arg(ctx.args)
+    with session_scope() as s:
+        vacancy_svc.get_for_user(s, ctx.user_id, vacancy_id)
+    enqueue("bot_letter", {"chat_id": ctx.chat_id, "vacancy_id": vacancy_id, "kind": "follow_up",
+                           "params": {"situation": "no_reply"}},
+            user_id=ctx.user_id, title="Follow-up из Telegram")
+    await ctx.api.answer_callback(ctx.callback_id, "Пишу follow-up…")
+
+
+@callback("sn")
+async def cb_snooze(ctx: Ctx) -> None:
+    with session_scope() as s:
+        vacancy_svc.snooze(s, ctx.user_id, _int_arg(ctx.args), days=7)
+    await ctx.api.answer_callback(ctx.callback_id, "Напомню через неделю")
+
+
 @callback("st")
 async def cb_status(ctx: Ctx) -> None:
     status, _, vid = ctx.args.partition(":")

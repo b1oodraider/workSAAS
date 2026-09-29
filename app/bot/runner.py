@@ -9,7 +9,7 @@ import asyncio
 import logging
 
 from app.bot.api import TelegramAPI, TelegramError
-from app.bot.digest import send_digests
+from app.bot.digest import send_digests, send_reminders
 from app.bot.handlers import handle_update, menu_commands
 from app.core.config import get_settings
 
@@ -54,10 +54,11 @@ class BotRunner:
         interval = get_settings().telegram.digest_interval_s
         while not self._stop.is_set():
             await self._sleep(interval)
-            try:
-                await send_digests(self.api)
-            except Exception:  # noqa: BLE001
-                log.exception("digest tick failed")
+            for tick in (send_digests, send_reminders):
+                try:
+                    await tick(self.api)
+                except Exception:  # noqa: BLE001
+                    log.exception("%s failed", tick.__name__)
 
     async def _sleep(self, seconds: float) -> None:
         try:

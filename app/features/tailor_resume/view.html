@@ -1,0 +1,10 @@
+<p>{{ o.summary }}</p>
+<p><b>Заголовок резюме:</b> {{ o.new_headline }}</p>
+<h4>Правки</h4>
+{% for c in o.changes %}
+<div class="issue sev-minor"><b>{{ c.section }}</b> <span class="muted">— {{ c.reason }}</span>
+  {% if c.before %}<blockquote class="muted"><s>{{ c.before }}</s></blockquote>{% endif %}
+  <blockquote>{{ c.after }}</blockquote></div>
+{% endfor %}
+{% if o.keywords_to_add %}<p><b>Добавить ключевые слова:</b> {{ o.keywords_to_add|join(", ") }}</p>{% endif %}
+{% if o.do_not_claim %}<h4>Не заявлять (по резюме не подтверждается)</h4><ul>{% for d in o.do_not_claim %}<li>{{ d }}</li>{% endfor %}</ul>{% endif %}

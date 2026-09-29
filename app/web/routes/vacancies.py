@@ -20,6 +20,7 @@ STATUS_LABELS = {
     "saved": "в избранном",
     "applied": "откликнулся",
     "interview": "собеседование",
+    "offer": "оффер",
     "rejected": "отказ",
     "hidden": "скрыта",
 }

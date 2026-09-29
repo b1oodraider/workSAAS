@@ -1,0 +1,5 @@
+<p><b>{{ o.subject }}</b></p>
+<div class="letter copyable" id="fu-{{ a.id }}">{{ o.body }}</div>
+<button type="button" class="btn-small" onclick="copyText('fu-{{ a.id }}', this)">Скопировать</button>
+<p class="muted">{{ o.when_to_send }}</p>
+{% if o.tips %}<ul>{% for t in o.tips %}<li>{{ t }}</li>{% endfor %}</ul>{% endif %}

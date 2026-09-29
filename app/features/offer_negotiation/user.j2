@@ -1,0 +1,12 @@
+Оффер:
+<user_text>
+{{ params.offer }}
+</user_text>
+{% if params.desired %}
+Кандидат хочет:
+<user_text>
+{{ params.desired }}
+</user_text>
+{% endif %}
+
+{% include "_pair.j2" %}

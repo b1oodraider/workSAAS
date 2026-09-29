@@ -1,0 +1,20 @@
+Этап интервью: {{ params.stage }}.
+{% if params.focus %}Кандидат просит сделать упор на:
+<user_text>
+{{ params.focus }}
+</user_text>
+{% endif %}
+
+{% include "_pair.j2" %}
+{% if match or vacancy_review %}
+
+<match_analysis>
+{% if match %}Пробелы кандидата: {% for g in match.gaps %}{{ g.requirement }} ({{ g.importance }}){% if not loop.last %}; {% endif %}{% endfor %}
+
+Сильные стороны: {{ match.talking_points|join("; ") }}
+{% endif %}
+{% if vacancy_review %}Неявные ожидания работодателя: {{ vacancy_review.hidden_expectations|join("; ") }}
+Вопросы для уточнения: {{ vacancy_review.questions_to_ask|join("; ") }}
+{% endif %}
+</match_analysis>
+{% endif %}

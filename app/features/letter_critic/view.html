@@ -1,0 +1,8 @@
+<div class="score-line"><span class="score {{ o.score|score_class }}">{{ o.score }}</span></div>
+<p>{{ o.verdict }}</p>
+{% if o.unsupported_claims %}<div class="issue sev-critical"><b>Не подтверждается резюме:</b><ul>{% for c in o.unsupported_claims %}<li>{{ c }}</li>{% endfor %}</ul></div>{% endif %}
+{% for i in o.issues %}<div class="issue sev-{{ i.severity }}"><span class="tag">{{ i.severity }}</span> {{ i.problem }}<div class="muted">→ {{ i.fix }}</div></div>{% endfor %}
+{% if o.strengths %}<h4>Что хорошо</h4><ul>{% for s in o.strengths %}<li>{{ s }}</li>{% endfor %}</ul>{% endif %}
+<h4>Исправленная версия</h4>
+<div class="letter copyable" id="critic-{{ a.id }}">{{ o.rewritten }}</div>
+<button type="button" class="btn-small" onclick="copyText('critic-{{ a.id }}', this)">Скопировать</button>

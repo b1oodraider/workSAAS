@@ -1,0 +1,10 @@
+<p>{{ o.summary }}</p>
+<h4>Вероятные вопросы</h4>
+{% for q in o.likely_questions %}
+<details class="issue"><summary><b>{{ q.question }}</b></summary>
+  <div class="muted">Проверяют: {{ q.why_they_ask }}</div><blockquote>{{ q.answer_outline }}</blockquote></details>
+{% endfor %}
+{% if o.technical_topics %}<h4>Что повторить</h4><ul>{% for t in o.technical_topics %}<li><b>{{ t.topic }}</b> — {{ t.what_to_review }}</li>{% endfor %}</ul>{% endif %}
+{% if o.weak_spots %}<h4>Слабые места и как отвечать</h4>{% for w in o.weak_spots %}<div class="issue sev-major">{{ w.gap }}<div class="muted">→ {{ w.how_to_answer }}</div></div>{% endfor %}{% endif %}
+<h4>Спросить у работодателя</h4><ul>{% for q in o.questions_to_employer %}<li>{{ q }}</li>{% endfor %}</ul>
+<h4>Разговор о деньгах</h4><p>{{ o.salary_talk }}</p>
