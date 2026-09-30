@@ -20,7 +20,7 @@
 </vacancy>
 {% if match %}
 
-Ранее сделанный анализ соответствия (используй talking_points и учитывай gaps):
+Ранее сделанный анализ соответствия — только подсказка, что подчеркнуть и какие пробелы учесть; факты и формулировки бери из <resume>, не из анализа:
 <match_analysis>
 - что подчеркнуть: {{ match.talking_points|join("; ") }}
 - пробелы: {% for g in match.gaps %}{{ g.requirement }} ({{ g.importance }}){% if not loop.last %}; {% endif %}{% endfor %}

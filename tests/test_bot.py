@@ -328,3 +328,61 @@ async def test_digest_backlog_not_dripped(user_id, tg):
                            score=90, provider="fake", model="m", prompt_version="2"))
     assert await send_digests(tg.api) == 1
     assert await send_digests(tg.api) == 0
+
+
+async def test_thumbs_down_asks_for_a_reason_then_hides_and_can_be_undone(user_id, linked, tg):
+    await handle_update(tg.api, msg(f"/start {linked}"))
+    with session_scope() as s:
+        vid = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+        other = vacancy_svc.create_manual(s, user_id, title="Go dev", text=VACANCY_TEXT).id
+    # A digest keyboard: item 2 is ours, item 1 must stay untouched.
+    markup = {"inline_keyboard": [
+        [{"text": "1. ✉️ Письмо", "callback_data": f"cl:{other}"}, {"text": "1. 👎", "callback_data": f"mv:down:{other}"}],
+        [{"text": "2. ✉️ Письмо", "callback_data": f"cl:{vid}"}, {"text": "2. ⭐", "callback_data": f"st:saved:{vid}"},
+         {"text": "2. 👎", "callback_data": f"mv:down:{vid}"}]]}
+
+    def press(data: str) -> dict:
+        update = cb(data)
+        update["callback_query"]["message"].update({"message_id": 7, "reply_markup": markup})
+        return update
+
+    async def pressed(data: str) -> dict:
+        await handle_update(tg.api, press(data))
+        return json.loads([p for m, p in tg.calls if m == "editMessageReplyMarkup"][-1]["reply_markup"])
+
+    markup = await pressed(f"mv:down:{vid}")
+    buttons = [b for row in markup["inline_keyboard"] for b in row]
+    assert {"text": "2. не мой уровень", "callback_data": f"mvr:grade:{vid}"} in buttons
+    assert f"mv:down:{other}" in str(markup) and f"mv:back:{vid}" in str(markup)
+    with session_scope() as s:
+        assert vacancy_svc.get_for_user(s, user_id, vid)[1].match_vote is None  # nothing saved before the reason
+
+    markup = await pressed(f"mv:back:{vid}")
+    assert markup["inline_keyboard"][1][2]["callback_data"] == f"mv:down:{vid}"  # the row is restored
+
+    await pressed(f"mv:down:{vid}")
+    markup = await pressed(f"mvr:grade:{vid}")
+    with session_scope() as s:
+        uv = vacancy_svc.get_for_user(s, user_id, vid)[1]
+        assert (uv.match_vote, uv.match_vote_reason, uv.status.value) == (-1, "grade", "hidden")
+    assert markup["inline_keyboard"][1] == [{"text": "2. ✖️ Отменить 👎 (не мой уровень)", "callback_data": f"mv:clear:{vid}"}]
+
+    await pressed(f"mv:clear:{vid}")
+    with session_scope() as s:
+        uv = vacancy_svc.get_for_user(s, user_id, vid)[1]
+        assert (uv.match_vote, uv.match_vote_reason, uv.status.value) == (None, "", "new")
+
+
+async def test_saving_counts_as_thumbs_up(user_id, linked, tg):
+    await handle_update(tg.api, msg(f"/start {linked}"))
+    with session_scope() as s:
+        vid = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+    await handle_update(tg.api, cb(f"st:saved:{vid}"))
+    with session_scope() as s:
+        assert vacancy_svc.get_for_user(s, user_id, vid)[1].match_vote == 1
+
+
+async def test_vote_on_someone_elses_vacancy_is_refused(user_id, linked, tg):
+    await handle_update(tg.api, msg(f"/start {linked}"))
+    await handle_update(tg.api, cb("mv:up:999999"))
+    assert [p for m, p in tg.calls if m == "answerCallbackQuery"][-1]["text"] == "Не найдено"

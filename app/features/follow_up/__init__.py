@@ -24,7 +24,7 @@ FEATURE = register(
         title="Follow-up письмо",
         description="Напомнить о себе после тишины, поблагодарить после интервью или попросить обратную связь после отказа.",
         subject="resume_vacancy",
-        task=LLMTask(name="follow_up", version="2", output=FollowUp,
+        task=LLMTask(name="follow_up", version="5", output=FollowUp,
                      template_dir=feature_dir(__file__), max_tokens=6000),
         params_model=Params,
         context_builder=lambda s, uid, r, v, p: pair_context(s, uid, r, v, "match"),

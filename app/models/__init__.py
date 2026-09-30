@@ -12,13 +12,22 @@ from app.models.llm import LLMCache, LLMUsage
 from app.models.resume import Resume
 from app.models.search import SavedSearch
 from app.models.user import TelegramLinkCode, User
-from app.models.vacancy import STATUS_LABELS, UserVacancy, UserVacancyStatus, Vacancy
+from app.models.vacancy import (
+    MATCH_VOTE_REASONS,
+    RESPONSE_QUALITY,
+    STATUS_LABELS,
+    UserVacancy,
+    UserVacancyStatus,
+    Vacancy,
+)
 
 __all__ = [
     "ACTIVE_APPLICATION_STATUSES",
     "Application",
     "ApplicationStatus",
     "AutoApplySettings",
+    "MATCH_VOTE_REASONS",
+    "RESPONSE_QUALITY",
     "STATUS_LABELS",
     "Analysis",
     "Job",

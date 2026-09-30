@@ -35,7 +35,8 @@ def salary(v: Vacancy) -> str:
 
 def vacancy_header(v: Vacancy) -> str:
     parts = [f"<b>{esc(clip(v.title, 200))}</b>"]
-    meta = " · ".join(esc(clip(x, 80)) for x in (v.company, v.location, salary(v)) if x)
+    posted = f"📅 {v.published_at:%d.%m}" if v.published_at else ""
+    meta = " · ".join(esc(clip(x, 80)) for x in (v.company, v.location, salary(v), posted) if x)
     if meta:
         parts.append(meta)
     return "\n".join(parts)

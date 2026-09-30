@@ -125,3 +125,37 @@ def test_malformed_items_are_skipped_not_fatal():
     d = draft_from_job_posting(jp, source="manual", external_id="1", url=None)
     assert d.location == "RU" and d.company is None and d.salary_from is None
     assert safe_map(lambda w: trudvsem.item_to_draft(w["vacancy"]), [{"no": "vacancy"}]) == []
+
+
+def test_old_vacancies_are_excluded_by_period_and_fresh_ones_rank_higher():
+    from datetime import datetime, timedelta
+
+    r = KeywordRanker()
+    now = datetime.now()
+    java = RankProfile(core_skills=["Java"], roles=["Java-разработчик"])
+
+    def rank(days: int | None, period: int = 30):
+        published = None if days is None else now - timedelta(days=days)
+        return r.score(java, RankInput("Java-разработчик", "Java", published_at=published),
+                       SearchFilters(period_days=period))
+
+    assert rank(40).excluded and not rank(20).excluded
+    assert rank(1).score == rank(None).score == 100
+    assert rank(1).score > rank(10).score > rank(25).score
+    assert not rank(400, period=0).excluded  # 0 = no period filter
+
+
+def test_vacancies_wanting_far_more_experience_rank_lower():
+    from app.ranking.prefilter import min_years
+
+    assert [min_years(x) for x in ("не требуется", "1–3 года", "более 6 лет", "", None)] == [0, 1, 6, None, None]
+    r = KeywordRanker()
+    junior = RankProfile(core_skills=["Java"], roles=["Java-разработчик"], years_experience=0.5)
+    unknown = RankProfile(core_skills=["Java"], roles=["Java-разработчик"])
+
+    def score(profile, experience):
+        return r.score(profile, RankInput("Java-разработчик", "Java", experience=experience), SearchFilters()).score
+
+    assert score(junior, "1–3 года") == score(junior, "не требуется") == 100
+    assert score(junior, "3–6 лет") == 60
+    assert score(unknown, "более 6 лет") == 100  # no known experience -> no guessing

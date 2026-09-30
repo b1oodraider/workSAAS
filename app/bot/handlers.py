@@ -14,7 +14,7 @@ from app.bot.api import TelegramAPI, TelegramError, button, clip, esc, keyboard,
 from app.bot.texts import VERDICTS, autoapply_pause_keyboard, salary, web_url
 from app.core.db import session_scope
 from app.jobs import enqueue
-from app.models import Resume, SavedSearch, User
+from app.models import MATCH_VOTE_REASONS, Resume, SavedSearch, User
 from app.services import autoapply as autoapply_svc
 from app.services import matches as matches_svc
 from app.services import search as search_svc
@@ -426,6 +426,10 @@ async def cb_status(ctx: Ctx) -> None:
     status, _, vid = ctx.args.partition(":")
     with session_scope() as s:
         vacancy_svc.set_status(s, ctx.user_id, _int_arg(vid), status)
+        if status == "saved":  # saving a vacancy means the match was right
+            _, uv = vacancy_svc.get_for_user(s, ctx.user_id, _int_arg(vid))
+            if uv.match_vote is None:
+                vacancy_svc.set_match_vote(s, ctx.user_id, uv.vacancy_id, 1)
     await ctx.api.answer_callback(ctx.callback_id, STATUS_DONE.get(status, "Готово"))
     if ctx.message_id and ctx.markup:
         # Mark the pressed vacancy in the message keyboard and offer an undo.
@@ -443,6 +447,96 @@ async def cb_status(ctx: Ctx) -> None:
             await ctx.api.edit_markup(ctx.chat_id, ctx.message_id, {"inline_keyboard": rows})
         except TelegramError:
             pass  # message too old to edit — the status is saved anyway
+
+
+_NUMBER_RE = re.compile(r"^(\d+)\.")
+
+
+def _vote_rows_of(ctx: Ctx, vid: str) -> list[list[dict[str, Any]]]:
+    return [row for row in (ctx.markup or {}).get("inline_keyboard", [])
+            if any(b.get("callback_data", "").startswith(("mv:", "mvr:")) and
+                   b.get("callback_data", "").endswith(f":{vid}") for b in row)]
+
+
+def _item_number(ctx: Ctx, vid: str) -> str:
+    """'3. ' when the vacancy is item 3 of a digest, '' on a single-vacancy card."""
+    for row in _vote_rows_of(ctx, vid):
+        for b in row:
+            if m := _NUMBER_RE.match(b.get("text", "")):
+                return f"{m.group(1)}. "
+    return ""
+
+
+def _actions_row(vid: str, n: str) -> list[dict[str, Any]]:
+    if n:  # digest item
+        return [button(f"{n}✉️ Письмо", f"cl:{vid}"), button(f"{n}⭐", f"st:saved:{vid}"),
+                button(f"{n}👎", f"mv:down:{vid}")]
+    return [button("⭐ Сохранить", f"st:saved:{vid}"), button("✅ Откликнулся", f"st:applied:{vid}"),
+            button("👎 Не подходит", f"mv:down:{vid}")]
+
+
+async def _replace_vote_rows(ctx: Ctx, vid: str, new_rows: list[list[dict[str, Any]]]) -> None:
+    """Swap the rows of this vacancy that carry 👎 / reason buttons in the message keyboard."""
+    if not (ctx.message_id and ctx.markup):
+        return
+    mine = _vote_rows_of(ctx, vid)
+    rows, replaced = [], False
+    for row in ctx.markup.get("inline_keyboard", []):
+        if row not in mine:
+            rows.append(row)
+        elif not replaced:
+            rows.extend(new_rows)
+            replaced = True
+    try:
+        await ctx.api.edit_markup(ctx.chat_id, ctx.message_id, {"inline_keyboard": rows})
+    except TelegramError:
+        pass  # message too old to edit — the vote is saved anyway
+
+
+@callback("mv")
+async def cb_match_vote(ctx: Ctx) -> None:
+    """👎 first asks why (the reason is what makes the vote useful); ↩️ goes back; ✖️ undoes."""
+    action, _, vid = ctx.args.partition(":")
+    vacancy_id = _int_arg(vid)
+    n = _item_number(ctx, vid)
+    if action == "down":
+        with session_scope() as s:
+            vacancy_svc.get_for_user(s, ctx.user_id, vacancy_id)
+        await ctx.api.answer_callback(ctx.callback_id, "Почему не подходит?")
+        reasons = [button(f"{n}{label}", f"mvr:{k}:{vid}") for k, label in MATCH_VOTE_REASONS.items()]
+        rows = [reasons[i:i + 3] for i in range(0, len(reasons), 3)]
+        await _replace_vote_rows(ctx, vid, [*rows, [button(f"{n}↩️ Назад", f"mv:back:{vid}")]])
+        return
+    if action == "back":
+        with session_scope() as s:
+            vacancy_svc.get_for_user(s, ctx.user_id, vacancy_id)
+        await ctx.api.answer_callback(ctx.callback_id, "")
+        await _replace_vote_rows(ctx, vid, [_actions_row(vid, n)])
+        return
+    vote = {"up": 1, "clear": None}.get(action, 0)
+    if vote == 0:
+        raise ValueError(action)
+    with session_scope() as s:
+        _, uv = vacancy_svc.get_for_user(s, ctx.user_id, vacancy_id)
+        vacancy_svc.set_match_vote(s, ctx.user_id, vacancy_id, vote)
+        if vote is None and uv.status.value == "hidden":
+            vacancy_svc.set_status(s, ctx.user_id, vacancy_id, "new")  # 👎 hid it; undo brings it back
+    await ctx.api.answer_callback(ctx.callback_id, "Учтём" if vote else "Оценка снята")
+    await _replace_vote_rows(ctx, vid, [[button(f"{n}✖️ Отменить 👍", f"mv:clear:{vid}")]] if vote
+                             else [_actions_row(vid, n)])
+
+
+@callback("mvr")
+async def cb_match_vote_reason(ctx: Ctx) -> None:
+    reason, _, vid = ctx.args.partition(":")
+    vacancy_id = _int_arg(vid)
+    n = _item_number(ctx, vid)
+    with session_scope() as s:
+        vacancy_svc.set_match_vote(s, ctx.user_id, vacancy_id, -1, reason)
+        vacancy_svc.set_status(s, ctx.user_id, vacancy_id, "hidden")
+    await ctx.api.answer_callback(ctx.callback_id, "Учтём и скроем")
+    label = MATCH_VOTE_REASONS.get(reason, "")
+    await _replace_vote_rows(ctx, vid, [[button(f"{n}✖️ Отменить 👎 ({label})", f"mv:clear:{vid}")]])
 
 
 @callback("run")
@@ -467,8 +561,7 @@ async def cb_default_resume(ctx: Ctx) -> None:
 def vacancy_keyboard(vacancy_id: int) -> dict[str, Any]:
     return keyboard(
         [button("✉️ Сопроводительное", f"cl:{vacancy_id}")],
-        [button("⭐ Сохранить", f"st:saved:{vacancy_id}"), button("✅ Откликнулся", f"st:applied:{vacancy_id}"),
-         button("🙈 Скрыть", f"st:hidden:{vacancy_id}")],
+        _actions_row(str(vacancy_id), ""),
     )
 
 

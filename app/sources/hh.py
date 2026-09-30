@@ -153,6 +153,9 @@ class HHSource(JobSource):
             raise SourceError(f"hh.ru недоступен: {exc}") from exc
         if resp.status_code == 404:
             return {}
+        # 400 bad_user_agent: hh.ru blacklists User-Agents (seen live with the example one).
+        if resp.status_code == 400 and "bad_user_agent" in resp.text:
+            raise ApiDenied("API hh.ru отклонил User-Agent — укажите свой user_agent с email в [sources.hh.options]")
         if resp.status_code in (401, 403):
             raise ApiDenied(f"API hh.ru отказал в доступе ({resp.status_code})")
         if resp.status_code >= 400:

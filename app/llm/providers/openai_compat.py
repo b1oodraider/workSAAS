@@ -15,10 +15,16 @@ from app.llm.base import (
     LLMInvalidOutput,
     LLMRequest,
     LLMResponse,
+    LLMTruncated,
     LLMUnavailable,
     TokenUsage,
     parse_json_output,
 )
+
+
+# Our effort scale -> OpenAI ``reasoning_effort``; most servers stop at "high".
+_REASONING_EFFORT = {"none": "none", "low": "low", "medium": "medium", "high": "high",
+                     "xhigh": "high", "max": "high"}
 
 
 class OpenAICompatProvider:
@@ -45,6 +51,8 @@ class OpenAICompatProvider:
                 {"role": "user", "content": req.user},
             ],
         }
+        if req.effort and self.cfg.reasoning_effort:
+            payload["reasoning_effort"] = _REASONING_EFFORT[req.effort]
         if self.cfg.json_mode == "json_schema":
             payload["response_format"] = {
                 "type": "json_schema",
@@ -85,7 +93,7 @@ class OpenAICompatProvider:
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMInvalidOutput(f"Unexpected response shape: {str(body)[:300]}") from exc
         if choice.get("finish_reason") == "length":
-            raise LLMInvalidOutput("Response truncated by max_tokens")
+            raise LLMTruncated("Response truncated by max_tokens")
         usage = body.get("usage") or {}
         return LLMResponse(
             data=parse_json_output(text, req.output_type),

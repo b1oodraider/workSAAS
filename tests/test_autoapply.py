@@ -632,7 +632,7 @@ GOOD_SESSION = b'{"cookies": [{"name": "hhtoken", "value": "1", "domain": ".hh.r
     (b'{"cookies": "x"}', "не тот файл"),
     (b'{"cookies": [{"name": "a", "value": "1", "domain": "hh.ru.evil.com"}]}', "нет cookies"),
     (b'{"cookies": [{"name": "a", "value": "1", "domain": "evilhh.ru"}]}', "нет cookies"),
-])
+], ids=lambda v: f"{len(v)}b" if isinstance(v, bytes) else None)  # huge ids overflow env vars on Windows
 def test_bad_session_upload_keeps_existing(user_id, applier, payload, word):
     with _client() as client:
         client.post("/login", data={"username": "alice", "password": "password123"})

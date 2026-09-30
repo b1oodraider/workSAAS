@@ -12,7 +12,7 @@ from app.core.db import session_scope
 from app.features import FEATURES
 from app.jobs.queue import drain
 from app.llm.providers.fake import FakeProvider
-from app.models import Analysis, Job, JobStatus, SavedSearch, UserVacancy
+from app.models import Analysis, Job, JobStatus, SavedSearch, UserVacancy, Vacancy
 from app.services import analysis as analysis_svc
 from app.services import resumes as resume_svc
 from app.services import search as search_svc
@@ -313,3 +313,111 @@ async def test_match_of_another_resume_is_not_borrowed(user_id, resume_id):
     await analysis_svc.run_analysis(user_id, "match", resume_id=other, vacancy_id=vacancy_id)
     await analysis_svc.run_analysis(user_id, "tailor_resume", resume_id=resume_id, vacancy_id=vacancy_id)
     assert "ФАКТ ИЗ ДРУГОГО РЕЗЮМЕ" not in FakeProvider.calls[-1].user
+
+
+def test_web_match_vote_and_rejection_quality(user_id, env):
+    import asyncio
+
+    from app.main import create_app
+    from app.services import vacancies as vacancy_svc
+
+    with TestClient(create_app(start_background=False)) as client:
+        client.post("/login", data={"username": "alice", "password": "password123"})
+        r = client.post("/resumes", data={"title": "CV", "text": RESUME_TEXT})
+        resume_id = int(re.search(r"/resumes/(\d+)", str(r.url)).group(1))
+        r = client.post("/vacancies", data={"mode": "text", "title": "Python dev", "text": VACANCY_TEXT})
+        vid = int(re.search(r"/vacancies/(\d+)", str(r.url)).group(1))
+        assert "Вам подходит эта вакансия?" not in r.text  # no AI match yet -> nothing to rate
+        client.post("/analyses", data={"kind": "match", "resume_id": resume_id, "vacancy_id": vid,
+                                       "back": f"/vacancies/{vid}"})
+        asyncio.run(drain())
+
+        r = client.post(f"/vacancies/{vid}/vote", data={"vote": "down", "reason": "salary"})
+        assert "вы: 👎 не та зарплата" in r.text and "Спасибо, учтём" in r.text
+        r = client.post(f"/vacancies/{vid}/vote", data={"vote": "sideways"})
+        assert "Оценка — 👍 или 👎" in r.text
+        r = client.post(f"/vacancies/{vid}/vote", data={"vote": "clear"})
+        assert "👎 Нет, потому что…" in r.text
+        with session_scope() as s:
+            assert vacancy_svc.get_for_user(s, user_id, vid)[1].match_vote is None
+
+        assert "Как отказали?" not in client.get(f"/vacancies/{vid}").text
+        client.post(f"/vacancies/{vid}/status", data={"status": "rejected"})
+        r = client.post(f"/vacancies/{vid}/response", data={"quality": "template"})
+        assert "Как отказали?" in r.text
+        with session_scope() as s:
+            assert vacancy_svc.get_for_user(s, user_id, vid)[1].response_quality == "template"
+        assert client.post(f"/vacancies/{vid + 999}/vote", data={"vote": "up"}).status_code == 404
+
+
+class TitleOnlySource(JobSource):
+    """Like the live hh search page: no text at all until the vacancy page is fetched."""
+
+    name = "titles"
+    title = "Titles"
+    fetched: list[str] = []
+
+    async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]:
+        return [VacancyDraft(source="titles", external_id=str(i), title="Разработчик", description="",
+                             is_partial=True) for i in range(1, 5)]
+
+    async def fetch(self, external_id: str) -> VacancyDraft | None:
+        self.fetched.append(external_id)
+        text = "Python, FastAPI, PostgreSQL" if external_id == "3" else "Бухгалтерия, 1С не нужен, Excel"
+        return VacancyDraft(source="titles", external_id=external_id, title="Разработчик", description=text)
+
+
+async def test_full_texts_decide_what_the_llm_evaluates(user_id, resume_id, monkeypatch, env):
+    from app.core.config import SourceConfig
+
+    monkeypatch.setitem(registry.SOURCE_CLASSES, "titles", TitleOnlySource)
+    monkeypatch.setitem(env.sources, "titles", SourceConfig())
+    FakeProvider.canned["resume_profile"] = {**PROFILE, "roles": ["Разработчик"], "negative_keywords": []}
+    env.matching.top_n, env.matching.prefilter_min = 1, 10
+    TitleOnlySource.fetched = []
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["titles"],
+                                      queries=[], filters={}).id
+    result = await search_svc.run_search(user_id, search_id)
+
+    # Equal title-only scores: top_n * FULL_TEXT_FACTOR candidates get their full text first.
+    assert len(TitleOnlySource.fetched) == search_svc.FULL_TEXT_FACTOR
+    assert result["llm_match_enqueued"] == 1
+    with session_scope() as s:
+        job = s.scalars(select(Job).where(Job.kind == "analysis")).one()
+        chosen = s.get(Vacancy, job.payload["vacancy_id"])
+        assert chosen.external_id == "3"  # the only one whose full text matches the skills
+
+
+async def test_vacancy_excluded_by_its_full_text_is_not_sent_to_the_llm(user_id, resume_id, monkeypatch, env):
+    from app.core.config import SourceConfig
+
+    class Source(TitleOnlySource):
+        name = "titles2"
+
+        async def fetch(self, external_id: str) -> VacancyDraft | None:
+            self.fetched.append(external_id)
+            # The first candidates turn out to be 1С jobs (a stop word) once their text is known.
+            text = "Python, FastAPI" if external_id == "1" else "Python, FastAPI, 1С"
+            return VacancyDraft(source="titles2", external_id=external_id, title="Разработчик", description=text)
+
+        async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]:
+            return [d.model_copy(update={"source": "titles2"}) for d in await super().search(query, limit)]
+
+    monkeypatch.setitem(registry.SOURCE_CLASSES, "titles2", Source)
+    monkeypatch.setitem(env.sources, "titles2", SourceConfig())
+    FakeProvider.canned["resume_profile"] = {**PROFILE, "roles": ["Разработчик"]}  # negative_keywords: 1С
+    env.matching.top_n, env.matching.prefilter_min = 1, 10
+    Source.fetched = []
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["titles2"],
+                                      queries=[], filters={}).id
+    await search_svc.run_search(user_id, search_id)
+    with session_scope() as s:
+        jobs = s.scalars(select(Job).where(Job.kind == "analysis")).all()
+        assert [s.get(Vacancy, j.payload["vacancy_id"]).external_id for j in jobs] == ["1"]
+        excluded = s.scalar(select(UserVacancy).join(Vacancy).where(Vacancy.source == "titles2",
+                                                                    Vacancy.external_id == "4"))
+        assert excluded.prefilter_score == 0
+    # The first batch (equal title scores) was all 1С; "1" was fetched past it, not trusted by title.
+    assert sorted(Source.fetched) == ["1", "2", "3", "4"]

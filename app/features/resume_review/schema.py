@@ -10,7 +10,7 @@ class ResumeIssue(BaseModel):
     section: str = Field(description="Раздел резюме, к которому относится проблема")
     problem: str = Field(description="Что не так, коротко и конкретно")
     fix: str = Field(description="Конкретно что сделать")
-    example: str | None = Field(description="Пример переписанного фрагмента, если уместно")
+    example: str | None = Field(None, description="Пример переписанного фрагмента, если уместно")
 
 
 class SectionScore(BaseModel):

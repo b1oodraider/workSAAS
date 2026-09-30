@@ -20,7 +20,7 @@ from app.core.http import make_async_client
 from app.core.text import html_to_text
 from app.jobs import JobContext, enqueue, job_handler
 from app.jobs.queue import JobError
-from app.models import UserVacancy, UserVacancyStatus, Vacancy
+from app.models import MATCH_VOTE_REASONS, RESPONSE_QUALITY, UserVacancy, UserVacancyStatus, Vacancy
 from app.services.errors import NotFound, ValidationFailed
 from app.sources import VacancyDraft, available_sources, get_source
 from app.sources.jsonld import draft_from_html
@@ -34,19 +34,27 @@ _NOISE_RE = re.compile(r"\([^)]*\)|\[[^\]]*\]|[^\w\s]+")
 _COMPANY_FORMS_RE = re.compile(r"\b(ооо|ао|пао|зао|оао|ип|llc|inc|ltd|gmbh)\b")
 
 
+def normalize_name(value: str) -> str:
+    """Lowercase, no punctuation, brackets or legal form: 'ООО «Ромашка» (Москва)' -> 'ромашка'."""
+    value = _NOISE_RE.sub(" ", value.lower().replace("ё", "е"))
+    return " ".join(_COMPANY_FORMS_RE.sub(" ", value).split())
+
+
 def make_dedup_key(company: str | None, title: str) -> str | None:
     """Same employer + same title (ignoring punctuation, brackets, legal form) = same vacancy."""
     if not company:
         return None
-
-    def norm(value: str) -> str:
-        value = _NOISE_RE.sub(" ", value.lower().replace("ё", "е"))
-        return " ".join(_COMPANY_FORMS_RE.sub(" ", value).split())
-
-    c, t = norm(company), norm(title)
+    c, t = normalize_name(company), normalize_name(title)
     if not c or not t:
         return None
     return hashlib.sha1(f"{c}|{t}".encode()).hexdigest()
+
+
+def trusted_sources() -> list[str]:
+    """Sources whose texts are published by the employers themselves (JobSource.trusted)."""
+    from app.sources.registry import SOURCE_CLASSES
+
+    return [name for name, cls in SOURCE_CLASSES.items() if cls.trusted]
 
 
 def canonical_for(s: Session, vacancy: Vacancy) -> Vacancy:
@@ -57,12 +65,9 @@ def canonical_for(s: Session, vacancy: Vacancy) -> Vacancy:
     company's vacancy. Unknown source names are treated as untrusted."""
     if not vacancy.dedup_key:
         return vacancy
-    from app.sources.registry import SOURCE_CLASSES
-
-    trusted = [name for name, cls in SOURCE_CLASSES.items() if cls.trusted]
     first = s.scalar(
         select(Vacancy)
-        .where(Vacancy.dedup_key == vacancy.dedup_key, Vacancy.source.in_(trusted))
+        .where(Vacancy.dedup_key == vacancy.dedup_key, Vacancy.source.in_(trusted_sources()))
         .order_by(Vacancy.id).limit(1)
     )
     return first or vacancy
@@ -151,6 +156,23 @@ def set_status(s: Session, user_id: int, vacancy_id: int, status: str, notes: st
     else:  # rejected, hidden, or back to new/saved: nothing to follow up on
         uv.next_action_at, uv.next_action_note = None, ""
     uv.reminded_at = None
+
+
+def set_match_vote(s: Session, user_id: int, vacancy_id: int, vote: int | None, reason: str = "") -> None:
+    """👍 (+1) / 👎 (-1) on the AI match; None clears it. A reason only makes sense for 👎."""
+    if vote not in (1, -1, None):
+        raise ValidationFailed("Оценка — 👍 или 👎")
+    if reason and (vote != -1 or reason not in MATCH_VOTE_REASONS):
+        raise ValidationFailed("Неизвестная причина")
+    _, uv = get_for_user(s, user_id, vacancy_id)
+    uv.match_vote, uv.match_vote_reason = vote, reason
+
+
+def set_response_quality(s: Session, user_id: int, vacancy_id: int, quality: str) -> None:
+    if quality and quality not in RESPONSE_QUALITY:
+        raise ValidationFailed("Неизвестный тип ответа")
+    _, uv = get_for_user(s, user_id, vacancy_id)
+    uv.response_quality = quality
 
 
 def set_next_action(s: Session, user_id: int, vacancy_id: int, when: datetime | None, note: str = "") -> None:

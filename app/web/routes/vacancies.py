@@ -6,7 +6,16 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.features import features_for
-from app.models import STATUS_LABELS, Analysis, UserVacancy, UserVacancyStatus, Vacancy
+from app.models import (
+    MATCH_VOTE_REASONS,
+    RESPONSE_QUALITY,
+    STATUS_LABELS,
+    Analysis,
+    UserVacancy,
+    UserVacancyStatus,
+    Vacancy,
+)
+from app.services import companies as company_svc
 from app.services import resumes as resume_svc
 from app.services import vacancies as vacancy_svc
 from app.services.errors import ValidationFailed
@@ -57,12 +66,40 @@ def detail(vacancy_id: int, request: Request, user: CurrentUser = Depends(curren
         select(Analysis).where(Analysis.user_id == user.id, Analysis.vacancy_id == vacancy.id)
         .order_by(Analysis.id.desc())
     ))
+    company = company_svc.ratings(s, [vacancy.company]).get(company_svc.key(vacancy.company))
     return render(
-        request, "vacancies/detail.html", vacancy=vacancy, uv=uv, analyses=analyses,
+        request, "vacancies/detail.html", vacancy=vacancy, uv=uv, analyses=analyses, company=company,
+        has_match=any(a.kind == "match" for a in analyses), vote_reasons=MATCH_VOTE_REASONS,
+        response_quality=RESPONSE_QUALITY,
         resumes=resume_svc.list_for_user(s, user.id), statuses=STATUS_LABELS,
         vacancy_features=[(f, form_fields(f.params_model)) for f in features_for("vacancy")],
         pair_features=[(f, form_fields(f.params_model)) for f in features_for("resume_vacancy")],
     )
+
+
+@router.post("/{vacancy_id}/vote")
+def vote(vacancy_id: int, request: Request, vote: str = Form(...), reason: str = Form(""), back: str = Form(""),
+         user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+    votes = {"up": 1, "down": -1, "clear": None}
+    try:
+        if vote not in votes:
+            raise ValidationFailed("Оценка — 👍 или 👎")
+        value = votes[vote]
+        vacancy_svc.set_match_vote(s, user.id, vacancy_id, value, reason if value == -1 else "")
+        flash(request, "Спасибо, учтём" if value else "Оценка снята")
+    except ValidationFailed as exc:
+        flash(request, str(exc), "error")
+    return RedirectResponse(safe_path(back, f"/vacancies/{vacancy_id}"), status_code=303)
+
+
+@router.post("/{vacancy_id}/response")
+def response_quality(vacancy_id: int, request: Request, quality: str = Form(""),
+                     user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+    try:
+        vacancy_svc.set_response_quality(s, user.id, vacancy_id, quality)
+    except ValidationFailed as exc:
+        flash(request, str(exc), "error")
+    return RedirectResponse(f"/vacancies/{vacancy_id}", status_code=303)
 
 
 @router.post("/{vacancy_id}/status")

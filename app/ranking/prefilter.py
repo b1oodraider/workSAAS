@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol
 
 from app.sources.base import SearchFilters
@@ -27,6 +28,7 @@ class RankProfile:
     secondary_skills: list[str] = field(default_factory=list)
     roles: list[str] = field(default_factory=list)
     negative_keywords: list[str] = field(default_factory=list)
+    years_experience: float | None = None
 
 
 @dataclass
@@ -37,6 +39,8 @@ class RankInput:
     salary_to: int | None = None
     remote: bool | None = None
     currency: str | None = None
+    published_at: datetime | None = None
+    experience: str | None = None  # as the source shows it: "3–6 лет", "более 6 лет", "не требуется"
 
 
 @dataclass
@@ -74,6 +78,42 @@ def _contains_stem(haystack: str, phrase: str) -> bool:
 # Currencies the salary filter understands as rubles (the filter value is in rubles).
 RUBLE_CODES = {None, "", "RUR", "RUB"}
 
+# Older postings get fewer answers: (max age in days, score multiplier). Unknown date -> 1.0.
+FRESHNESS = [(3, 1.0), (7, 0.95), (14, 0.9), (30, 0.8)]
+STALE_MULTIPLIER = 0.7
+
+
+def age_days(published_at: datetime | None, now: datetime | None = None) -> float | None:
+    if published_at is None:
+        return None
+    if published_at.tzinfo is not None:
+        published_at = published_at.astimezone(UTC).replace(tzinfo=None)
+    now = now or datetime.now(UTC).replace(tzinfo=None)
+    return max((now - published_at).total_seconds() / 86400, 0.0)
+
+
+_YEARS_RE = re.compile(r"(\d+)")
+# A vacancy that wants this many times more experience than the candidate has is "another grade".
+GRADE_GAP = 2.0
+GRADE_MULTIPLIER = 0.6
+
+
+def min_years(experience: str | None) -> int | None:
+    """'1–3 года' -> 1, 'более 6 лет' -> 6, 'не требуется' -> 0; unknown -> None."""
+    if not experience:
+        return None
+    text = experience.lower()
+    if "не треб" in text or "без опыта" in text:
+        return 0
+    m = _YEARS_RE.search(text)
+    return int(m.group(1)) if m else None
+
+
+def freshness(age: float | None) -> float:
+    if age is None:
+        return 1.0
+    return next((m for days, m in FRESHNESS if age <= days), STALE_MULTIPLIER)
+
 
 class KeywordRanker:
     def score(self, profile: RankProfile, vacancy: RankInput, filters: SearchFilters) -> RankResult:
@@ -89,6 +129,10 @@ class KeywordRanker:
         if (filters.salary_min and vacancy.salary_to and vacancy.currency in RUBLE_CODES
                 and vacancy.salary_to < filters.salary_min):
             return RankResult(0.0, [f"зарплата до {vacancy.salary_to} < {filters.salary_min}"], excluded=True)
+        # Not every source filters by date natively; the period applies to all of them here.
+        age = age_days(vacancy.published_at)
+        if age is not None and filters.period_days and age > filters.period_days:
+            return RankResult(0.0, [f"опубликована больше {filters.period_days} дн. назад"], excluded=True)
 
         weights = [(s, 2.0) for s in profile.core_skills] + [(s, 1.0) for s in profile.secondary_skills]
         total = sum(w for _, w in weights) or 1.0
@@ -105,8 +149,19 @@ class KeywordRanker:
                     break
         title_part = 1.0 if role_hit else 0.0
 
-        score = round(70 * skill_part + 30 * title_part, 1)
+        fresh = freshness(age)
+        wanted = min_years(vacancy.experience)
+        grade = 1.0
+        # "1–3 года" is the usual entry band on hh; only 3+ years can be "another grade".
+        if (wanted and wanted >= 3 and profile.years_experience is not None
+                and wanted >= GRADE_GAP * max(profile.years_experience, 0.5)):
+            grade = GRADE_MULTIPLIER
+        score = round((70 * skill_part + 30 * title_part) * fresh * grade, 1)
         reasons = []
+        if fresh < 1.0:
+            reasons.append(f"опубликована {int(age)} дн. назад")
+        if grade < 1.0:
+            reasons.append(f"нужен опыт от {wanted} лет")
         if matched:
             reasons.append("навыки: " + ", ".join(matched[:8]))
         if role_hit:

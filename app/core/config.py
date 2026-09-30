@@ -39,6 +39,9 @@ class ProviderConfig(BaseModel):
     # openai_compat only: how to ask for JSON. "json_schema" is best when supported,
     # "json_object" works with most servers (Ollama, LM Studio, DeepSeek).
     json_mode: Literal["json_schema", "json_object", "none"] = "json_object"
+    # openai_compat only: send the route's effort as ``reasoning_effort`` (limits "thinking"
+    # tokens of reasoning models). Off by default: some servers reject the parameter (HTTP 400).
+    reasoning_effort: bool = False
     # How the key is sent. anthropic: "x-api-key" (Anthropic) or "bearer" (most resellers).
     # openai_compat: "bearer" (default) or e.g. "Api-Key" for Yandex AI Studio API keys.
     auth_scheme: str = ""
@@ -58,7 +61,8 @@ class ProviderConfig(BaseModel):
 class LLMTarget(BaseModel):
     provider: str
     model: str
-    effort: Literal["low", "medium", "high", "xhigh", "max"] | None = None
+    # "none" disables thinking on OpenAI-compatible reasoning models (Anthropic treats it as "low").
+    effort: Literal["none", "low", "medium", "high", "xhigh", "max"] | None = None
     max_tokens: int | None = None
 
 

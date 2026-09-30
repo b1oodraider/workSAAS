@@ -72,6 +72,23 @@ STATUS_LABELS = {
 }
 
 
+# Why an AI match was wrong (👎). Shared by the web UI and the bot.
+MATCH_VOTE_REASONS = {
+    "grade": "не мой уровень",
+    "profession": "не моя профессия",
+    "salary": "не та зарплата",
+    "format": "формат / город",
+    "company": "не нравится компания",
+    "other": "другое",
+}
+
+# How the employer rejected an application (an invitation is known from the status).
+RESPONSE_QUALITY = {
+    "template": "шаблонно, без причины",
+    "reasoned": "объяснили причину",
+}
+
+
 class UserVacancy(TimestampMixin, Base):
     """Per-user view of a vacancy: pipeline status and prefilter score."""
 
@@ -98,5 +115,10 @@ class UserVacancy(TimestampMixin, Base):
     reminded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     # [{"status": "applied", "at": "2026-09-29T10:00:00"}, ...]
     status_history: Mapped[list[dict]] = mapped_column(JSON, default=list)
+    # The user's verdict on the AI match: +1 / -1, and why it is wrong (MATCH_VOTE_REASONS).
+    match_vote: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    match_vote_reason: Mapped[str] = mapped_column(String(16), default="", server_default="")
+    # What the employer answered (RESPONSE_QUALITY); feeds the company rating.
+    response_quality: Mapped[str] = mapped_column(String(16), default="", server_default="")
 
     vacancy: Mapped[Vacancy] = relationship(lazy="joined")

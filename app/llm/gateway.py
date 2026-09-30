@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
+from datetime import date
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
@@ -24,6 +25,7 @@ from app.llm.base import (
     LLMProvider,
     LLMRefusal,
     LLMRequest,
+    LLMTruncated,
     TokenUsage,
 )
 from app.llm.pricing import cost_usd
@@ -101,7 +103,8 @@ class LLMGateway:
         use_cache: bool = True,
     ) -> TaskResult[T]:
         route = self.settings.llm.route_for(task.name)
-        variables = {"language": self.settings.output_language, **variables}
+        # Month precision: models need "now" to read dates, and the cache stays valid for a month.
+        variables = {"language": self.settings.output_language, "today": current_month(), **variables}
         system, user = task.render(variables)
         use_cache = use_cache and self.settings.llm.cache_enabled
         targets = route.targets()
@@ -121,7 +124,15 @@ class LLMGateway:
         last_error: LLMError | None = None
         for i, target in enumerate(targets):
             try:
-                result = await self._call(task, target, system, user, user_id)
+                try:
+                    result = await self._call(task, target, system, user, user_id)
+                except LLMTruncated:
+                    raise  # the same request would be cut again: go straight to the fallback
+                except LLMInvalidOutput as exc:
+                    # Broken JSON is usually a one-off sampling glitch: one more try on the same model
+                    # is cheaper and faster than the fallback.
+                    log.warning("llm %s via %s: invalid output (%s), retrying once", task.name, target.provider, exc)
+                    result = await self._call(task, target, system, user, user_id)
             except LLMRefusal:
                 raise  # another provider is not a fix for a policy decline
             except LLMError as exc:
@@ -215,6 +226,15 @@ class LLMGateway:
                     latency_ms=latency_ms,
                 )
             )
+
+
+_MONTHS = ("январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь",
+           "ноябрь", "декабрь")
+
+
+def current_month() -> str:
+    today = date.today()
+    return f"{_MONTHS[today.month - 1]} {today.year}"
 
 
 _gateway: LLMGateway | None = None

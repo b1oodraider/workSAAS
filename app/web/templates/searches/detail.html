@@ -20,8 +20,10 @@
     <td>{% if m %}<a href="/analyses/{{ m.id }}"><span class="score {{ m.score|score_class }}">{{ m.score|int }}</span></a>{% else %}<span class="muted">—</span>{% endif %}</td>
     <td class="muted">{{ (it.uv.prefilter_score or 0)|round|int }}</td>
     <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a>
-        <div class="muted">{{ v.company or "" }}{% if v.location %} · {{ v.location }}{% endif %}{% if v.remote %} · удалённо{% endif %}</div>
-        {% if m %}<div>{{ m.output.summary }}</div>{% endif %}</td>
+        <div class="muted">{{ v.company or "" }}{% if v.location %} · {{ v.location }}{% endif %}{% if v.remote %} · удалённо{% endif %}{% if v.published_at %} · 📅 {{ v.published_at|day }}{% endif %}</div>
+        {% if it.company and it.company.badges %}<div class="muted">🏢 {{ it.company.badges|join(" · ") }}</div>{% endif %}
+        {% if m %}<div>{{ m.output.summary }}</div>{% endif %}
+        {% if it.uv.match_vote %}<div class="muted">вы: {{ "👍 подходит" if it.uv.match_vote > 0 else "👎 " ~ vote_reasons.get(it.uv.match_vote_reason, "не подходит") }}</div>{% endif %}</td>
     <td>{{ v|money }}</td>
     <td>
       <form method="post" action="/vacancies/{{ v.id }}/status">

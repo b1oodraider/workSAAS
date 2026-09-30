@@ -3,10 +3,11 @@
 {% block content %}
 <h1>{{ vacancy.title }}</h1>
 <p class="muted">
-  {{ vacancy.company or "" }}{% if vacancy.location %} · {{ vacancy.location }}{% endif %} · {{ vacancy|money }}
+  {{ vacancy.company or "" }}{% if vacancy.location %} · {{ vacancy.location }}{% endif %} · {{ vacancy|money }}{% if vacancy.published_at %} · 📅 опубликована {{ vacancy.published_at|day }}{% endif %}
   {% if vacancy.remote %} · удалённо{% endif %}
   {% if vacancy.url|safe_url %} · <a href="{{ vacancy.url|safe_url }}" target="_blank" rel="noopener noreferrer">открыть на сайте</a>{% endif %}
 </p>
+{% if company and company.badges %}<p class="muted">🏢 О компании (по откликам пользователей сервиса и разбору её вакансий): {{ company.badges|join(" · ") }}</p>{% endif %}
 <div class="cols">
   <div class="card">
     <h2>Действия</h2>
@@ -17,6 +18,33 @@
       <button class="btn-small">Сохранить статус</button>
     </form>
     {% if uv.applied_at %}<p class="muted">Отклик: {{ uv.applied_at|dt }}</p>{% endif %}
+    {% if uv.status.value == "rejected" %}
+    <form method="post" action="/vacancies/{{ vacancy.id }}/response" class="row">
+      <label style="flex:1">Как отказали? <span class="muted">— помогает оценить работодателя</span>
+        <select name="quality" onchange="this.form.submit()">
+          <option value="">— не указано —</option>
+          {% for k, label in response_quality.items() %}<option value="{{ k }}" {% if k == uv.response_quality %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></label>
+    </form>
+    {% endif %}
+    {% if has_match %}
+    <div class="row">
+      <span>Вам подходит эта вакансия?</span>
+      {% if uv.match_vote %}
+        <span>вы: {{ "👍 подходит" if uv.match_vote > 0 else "👎 " ~ vote_reasons.get(uv.match_vote_reason, "не подходит") }}</span>
+        <form method="post" action="/vacancies/{{ vacancy.id }}/vote"><button name="vote" value="clear" class="btn-small secondary">отменить</button></form>
+      {% else %}
+        <form method="post" action="/vacancies/{{ vacancy.id }}/vote"><button name="vote" value="up" class="btn-small secondary">👍 Да</button></form>
+        <form method="post" action="/vacancies/{{ vacancy.id }}/vote">
+          <input type="hidden" name="vote" value="down">
+          <select name="reason" onchange="if (this.value) this.form.submit()" aria-label="Нет, потому что">
+            <option value="">👎 Нет, потому что…</option>
+            {% for k, label in vote_reasons.items() %}<option value="{{ k }}">{{ label }}{% if k == "company" %} (учтётся в оценке компании){% endif %}</option>{% endfor %}
+          </select>
+        </form>
+      {% endif %}
+    </div>
+    {% endif %}
     {% set hint = {"interview": ("interview_prep", "Скоро собеседование — подготовьтесь:"),
                    "offer": ("offer_negotiation", "Есть оффер — разберите условия перед ответом:"),
                    "applied": ("follow_up", "Нет ответа неделю? Напомните о себе:")}.get(uv.status.value) %}

@@ -34,6 +34,10 @@ class LLMInvalidOutput(LLMError):
     retryable = True
 
 
+class LLMTruncated(LLMInvalidOutput):
+    """The answer hit max_tokens: the same request would be cut again."""
+
+
 class BudgetExceeded(LLMError):
     """User's monthly LLM budget is spent."""
 

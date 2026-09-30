@@ -51,12 +51,15 @@ refusal_fallback = true
 # auth_scheme = "bearer"
 # price_multiplier = 3.6
 
-# Cloud.ru Foundation Models (GigaChat, Qwen, GLM) — OpenAI-совместимый API, карта РФ.
+# Cloud.ru Foundation Models (DeepSeek, GigaChat, Qwen, GLM) — OpenAI-совместимый API, карта РФ.
+# Проверено 2026-09-30: json_object работает у DeepSeek/GigaChat3.5; GigaChat-3-Pro с json_object
+# возвращает саму схему — ему нужен "json_schema". Выбор моделей — docs/LLM_PLANS.md.
 # [llm.providers.cloudru]
 # type = "openai_compat"
 # base_url = "https://foundation-models.api.cloud.ru/v1"
 # api_key_env = "CLOUDRU_API_KEY"
 # json_mode = "json_object"
+# reasoning_effort = true      # передавать effort маршрута как reasoning_effort (проверено на Cloud.ru)
 
 # Yandex AI Studio — OpenAI-совместимый API; модель указывается как "gpt://<folder_id>/<модель>/latest".
 # Какой заголовок авторизации нужен для вашего ключа (Bearer или Api-Key) — проверьте в документации.
@@ -87,7 +90,8 @@ type = "fake"   # офлайн-заглушка для разработки ин
 
 # ---------------------------------------------------------------------------
 # Маршруты: какая модель обслуживает какую фичу. "default" — для всех остальных.
-# effort: low | medium | high | xhigh | max (глубина размышлений; влияет на цену).
+# effort: none | low | medium | high | xhigh | max (глубина размышлений; влияет на цену).
+# OpenAI-совместимым провайдерам уходит как reasoning_effort (xhigh/max -> high); none — без размышлений.
 # ---------------------------------------------------------------------------
 [llm.routes.default]
 provider = "anthropic"
@@ -157,7 +161,7 @@ mode = "auto"
 fetcher = "auto"
 min_interval = 2.5                          # секунд между запросами к hh.ru — не уменьшайте сильно
 area = 113                                  # 113 Россия, 1 Москва, 2 СПб
-user_agent = "worksaas/0.1 (you@example.com)"  # для API: hh.ru просит указывать контакт
+user_agent = "worksaas/0.1 (you@example.com)"  # для API впишите свой email: этот пример hh.ru отклоняет (400 bad_user_agent)
 # access_token = ""                         # если есть OAuth-токен приложения hh.ru
 
 [sources.habr]                              # Хабр Карьера

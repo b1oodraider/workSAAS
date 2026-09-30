@@ -80,9 +80,10 @@ async def _deliver(api: TelegramAPI, chat_id: int, text: str, kb: dict[str, Any]
 
 def _digest_item(i: int, v: Vacancy, a: Analysis) -> str:
     summary = (a.output or {}).get("summary", "")
+    posted = f" · 📅 {v.published_at:%d.%m}" if v.published_at else ""
     return (f"\n{i}. <b>{esc(int(a.score or 0))}</b> — "
             f'<a href="{esc(web_url(f"/vacancies/{v.id}"))}">{esc(clip(v.title, 120))}</a>\n'
-            f"{esc(clip(v.company or '', 80))} · {esc(salary(v))}\n<i>{esc(clip(summary, 280))}</i>")
+            f"{esc(clip(v.company or '', 80))} · {esc(salary(v))}{posted}\n<i>{esc(clip(summary, 280))}</i>")
 
 
 def build_digest(rows) -> tuple[str, dict, list[int]]:
@@ -96,8 +97,8 @@ def build_digest(rows) -> tuple[str, dict, list[int]]:
         size += len(item)
         items.append(item)
         ids.append(uv.id)
-        kb.append([button(f"{i}. ✉️ Письмо", f"cl:{v.id}"), button(f"{i}. ⭐ Сохранить", f"st:saved:{v.id}"),
-                   button(f"{i}. 🙈", f"st:hidden:{v.id}")])
+        kb.append([button(f"{i}. ✉️ Письмо", f"cl:{v.id}"), button(f"{i}. ⭐", f"st:saved:{v.id}"),
+                   button(f"{i}. 👎", f"mv:down:{v.id}")])
     lines = [f"🔥 <b>Новые подходящие вакансии: {len(rows)}</b>", *items]
     if len(rows) > len(ids):
         lines.append(f"\n…и ещё {len(rows) - len(ids)} — смотрите /top")

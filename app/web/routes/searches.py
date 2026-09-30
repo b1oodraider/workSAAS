@@ -12,7 +12,7 @@ from app.services import search as search_svc
 from app.services.errors import ValidationFailed
 from app.sources import available_sources
 from app.web.deps import CurrentUser, current_user, db
-from app.models import STATUS_LABELS
+from app.models import MATCH_VOTE_REASONS, STATUS_LABELS
 from app.web.templating import flash, render
 
 router = APIRouter(prefix="/searches")
@@ -85,7 +85,8 @@ def detail(search_id: int, request: Request, hidden: int = 0,
     items = search_svc.results(s, user.id, search_id, include_hidden=bool(hidden))
     resume = resume_svc.get_owned(s, user.id, search.resume_id)
     return render(request, "searches/detail.html", search=search, items=items, resume=resume,
-                  statuses=STATUS_LABELS, experience=EXPERIENCE, hidden=hidden)
+                  statuses=STATUS_LABELS, experience=EXPERIENCE, hidden=hidden,
+                  vote_reasons=MATCH_VOTE_REASONS)
 
 
 @router.post("/{search_id}/run")

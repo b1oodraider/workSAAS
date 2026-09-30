@@ -9,7 +9,7 @@ FEATURE = register(
         title="Оценка вакансии",
         description="Качество вакансии, красные и зелёные флаги, реальные требования, вопросы работодателю.",
         subject="vacancy",
-        task=LLMTask(name="vacancy_review", version="2", output=VacancyReview,
+        task=LLMTask(name="vacancy_review", version="5", output=VacancyReview,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         score_field="overall_score",
         order=20,

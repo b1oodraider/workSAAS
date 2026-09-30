@@ -9,10 +9,10 @@ import anthropic
 from app.core.config import ProviderConfig, get_settings
 from app.llm.base import (
     LLMError,
-    LLMInvalidOutput,
     LLMRefusal,
     LLMRequest,
     LLMResponse,
+    LLMTruncated,
     LLMUnavailable,
     TokenUsage,
     parse_json_output,
@@ -60,7 +60,8 @@ class AnthropicProvider:
             "output_format": req.output_type,
         }
         if req.effort:
-            kwargs["output_config"] = {"effort": req.effort}
+            # Anthropic has no "off" level; "none" is the OpenAI-style knob.
+            kwargs["output_config"] = {"effort": "low" if req.effort == "none" else req.effort}
         if self._use_fallback(req.model):
             kwargs["extra_headers"] = {"anthropic-beta": _FALLBACK_BETA}
             kwargs["extra_body"] = {"fallbacks": "default"}
@@ -79,7 +80,7 @@ class AnthropicProvider:
             reason = getattr(details, "explanation", None) or getattr(details, "category", None)
             raise LLMRefusal(f"Model declined the request ({reason or 'no details'})")
         if response.stop_reason == "max_tokens":
-            raise LLMInvalidOutput("Response truncated by max_tokens")
+            raise LLMTruncated("Response truncated by max_tokens")
 
         parsed = getattr(response, "parsed_output", None)
         if parsed is not None:

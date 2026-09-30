@@ -22,7 +22,8 @@ STATE_PAGE = """<html><body><template id="HH-Lux-InitialState">{}</template></bo
                                                       "currencyCode": "RUR", "gross": False},
          "snippet": {"req": "Опыт <highlighttext>Python</highlighttext> от 3 лет", "resp": "Писать API"},
          "links": {"desktop": "https://hh.ru/vacancy/111"},
-         "publicationTime": {"$": "2026-09-20T10:00:00+0300"}},
+         "publicationTime": {"$": "2026-09-20T10:00:00+0300"}, "workExperience": "between3And6",
+         "workFormats": [{"workFormatsElement": ["REMOTE"]}]},
         {"vacancyId": 222, "name": "Go developer", "company": {"name": "Beta"}},
     ]}}, ensure_ascii=False))
 
@@ -64,6 +65,8 @@ def test_search_page_embedded_state():
     assert d.company == "Acme" and d.salary_from == 200000 and d.currency == "RUR"
     assert "Опыт Python от 3 лет" in d.description and d.is_partial
     assert d.published_at.day == 20
+    assert d.experience == "3–6 лет" and d.remote  # live pages carry no snippet, but these fields
+    assert drafts[1].experience is None
 
 
 def test_search_page_markup_fallback():
@@ -156,3 +159,26 @@ async def test_web_search_reports_captcha(monkeypatch):
 ])
 def test_parse_salary_shorthand(text, expected):
     assert parse_salary_text(text) == expected
+
+
+@pytest.mark.parametrize(("status", "body", "denied"), [
+    (400, '{"errors":[{"value":"blacklisted","type":"bad_user_agent"}]}', True),
+    (403, "{}", True),
+    (400, '{"errors":[{"type":"bad_argument"}]}', False),
+])
+async def test_api_refusals_raise_api_denied(status, body, denied):
+    import httpx
+
+    transport = httpx.MockTransport(lambda _req: httpx.Response(status, text=body))
+    src = HHSource(SourceConfig(options={"mode": "auto", "api_min_interval": 0}))
+    async with httpx.AsyncClient(transport=transport) as client:
+        with pytest.raises(ApiDenied if denied else SourceError) as info:
+            await src._get(client, "/vacancies")
+    assert isinstance(info.value, ApiDenied) is denied
+
+
+def test_moscow_time_is_stored_as_utc():
+    from app.sources.hh_web import _parse_dt
+
+    assert _parse_dt("2026-09-20T10:00:00+0300").hour == 7
+    assert _parse_dt("2026-09-20").hour == 0

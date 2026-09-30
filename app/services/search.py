@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -19,6 +19,7 @@ from app.jobs.queue import JobError
 from app.models import Analysis, Job, JobStatus, SavedSearch, User, UserVacancy, Vacancy
 from app.ranking.prefilter import KeywordRanker, RankInput, RankProfile, Ranker
 from app.services import analysis as analysis_svc
+from app.services import companies as company_svc
 from app.services import resumes as resume_svc
 from app.services import vacancies as vacancy_svc
 from app.services.errors import NotFound, ValidationFailed
@@ -26,7 +27,7 @@ from app.sources import SearchFilters, SearchQuery, SourceError, get_source
 
 log = logging.getLogger(__name__)
 
-MAX_QUERIES = 6
+MAX_QUERIES = 8
 MIN_INTERVAL_MINUTES = 60
 MAX_SEARCHES_PER_USER = 20
 
@@ -129,7 +130,41 @@ def to_rank_profile(profile: ResumeProfile) -> RankProfile:
         secondary_skills=[sk.name for sk in profile.skills if sk.level == "secondary"],
         roles=profile.roles,
         negative_keywords=profile.negative_keywords,
+        years_experience=profile.years_experience,
     )
+
+
+# Search pages give little text (hh shows no snippets at all): before choosing what the LLM
+# evaluates, fetch full descriptions of this many times top_n best candidates and rank again.
+FULL_TEXT_FACTOR = 3
+
+
+def _rank_input(v: Vacancy) -> RankInput:
+    return RankInput(title=v.title, text=v.description + " " + " ".join(v.skills),
+                     salary_from=v.salary_from, salary_to=v.salary_to, remote=v.remote,
+                     currency=v.currency, published_at=v.published_at, experience=v.experience)
+
+
+async def _rescore_with_full_text(user_id: int, vacancy_ids: list[int], profile: RankProfile,
+                                  filters: SearchFilters, ranker: Ranker) -> dict[int, float | None]:
+    """New prefilter scores after loading full texts; None = excluded by the full text."""
+    result: dict[int, float | None] = {}
+    for vid in vacancy_ids:
+        with session_scope() as s:
+            partial = s.scalar(select(Vacancy.is_partial).where(Vacancy.id == vid))
+        if not partial:
+            continue
+        await vacancy_svc.ensure_full(vid)
+        with session_scope() as s:
+            v = s.get(Vacancy, vid)
+            if v is None or v.is_partial:  # the page could not be fetched: keep the old score
+                continue
+            rank = ranker.score(profile, _rank_input(v), filters)
+            uv = s.scalar(select(UserVacancy).where(UserVacancy.user_id == user_id, UserVacancy.vacancy_id == vid))
+            if uv is not None:
+                uv.prefilter_score = rank.score
+            result[vid] = None if rank.excluded else rank.score
+    return result
 
 
 def build_queries(search: SavedSearch, profile: ResumeProfile) -> list[str]:
@@ -198,13 +233,7 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
                 continue
             seen_ids.add(vacancy.id)
             new_count += int(created and vacancy.id == stored.id)
-            rank = ranker.score(
-                rank_profile,
-                RankInput(title=vacancy.title, text=vacancy.description + " " + " ".join(vacancy.skills),
-                          salary_from=vacancy.salary_from, salary_to=vacancy.salary_to,
-                          remote=vacancy.remote, currency=vacancy.currency),
-                filters,
-            )
+            rank = ranker.score(rank_profile, _rank_input(vacancy), filters)
             uv = vacancy_svc.attach(s, user_id, vacancy.id, search_id=search_id,
                                     prefilter_score=rank.score)
             if not rank.excluded and uv.status.value != "hidden":
@@ -228,9 +257,27 @@ async def run_search(user_id: int, search_id: int, *, parent_job_id: int | None 
                 already.add(p.get("vacancy_id"))
 
     scored.sort(reverse=True)
-    to_match = [vid for score, vid in scored
-                if score >= settings.matching.prefilter_min and vid not in already]
-    to_match = to_match[: settings.matching.top_n]
+    top_n = settings.matching.top_n
+    candidates = [vid for score, vid in scored if vid not in already][: top_n * FULL_TEXT_FACTOR]
+    rescored = await _rescore_with_full_text(user_id, candidates, rank_profile, filters, ranker)
+    scored = sorted([(rescored.get(vid, score), vid) for score, vid in scored
+                     if rescored.get(vid, score) is not None], reverse=True)
+    to_match: list[int] = []
+    budget = top_n * FULL_TEXT_FACTOR  # extra page fetches if many candidates fell out
+    for score, vid in scored:
+        if len(to_match) >= top_n:
+            break
+        if score < settings.matching.prefilter_min or vid in already:
+            continue
+        if vid not in rescored:  # past the first batch: never send a title-only vacancy to the LLM
+            if budget <= 0:
+                break
+            budget -= 1
+            extra = await _rescore_with_full_text(user_id, [vid], rank_profile, filters, ranker)
+            score = extra.get(vid, score)
+            if score is None or score < settings.matching.prefilter_min:
+                continue
+        to_match.append(vid)
     for vid in to_match:
         analysis_svc.enqueue_analysis(user_id, "match", resume_id=resume_id, vacancy_id=vid,
                                       parent_id=parent_job_id)
@@ -271,9 +318,17 @@ def results(s: Session, user_id: int, search_id: int, *, include_hidden: bool = 
         .order_by(Analysis.id)
     ):
         matches[a.vacancy_id] = a  # later rows overwrite -> latest wins
-    items = [{"uv": uv, "vacancy": uv.vacancy, "match": matches.get(uv.vacancy_id)} for uv in rows]
-    items.sort(key=lambda it: (
-        it["match"].score if it["match"] and it["match"].score is not None else -1,
-        it["uv"].prefilter_score or 0,
-    ), reverse=True)
+    rated = company_svc.ratings(s, [uv.vacancy.company for uv in rows])
+    items = [{"uv": uv, "vacancy": uv.vacancy, "match": matches.get(uv.vacancy_id),
+              "company": rated.get(company_svc.key(uv.vacancy.company))} for uv in rows]
+
+    def sort_key(it: dict[str, Any]) -> tuple:
+        # The company rating is a light argument: at most ±5 points, never excludes anything.
+        adj = it["company"].sort_adjustment if it["company"] else 0.0
+        m = it["match"]
+        return (m is not None and m.score is not None,
+                (m.score if m is not None and m.score is not None else it["uv"].prefilter_score or 0) + adj,
+                it["vacancy"].published_at or datetime.min)
+
+    items.sort(key=sort_key, reverse=True)
     return items[:limit]

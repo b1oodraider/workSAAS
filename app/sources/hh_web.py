@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from bs4 import BeautifulSoup, Tag
@@ -37,16 +37,21 @@ def _qa(root: Tag, *names: str) -> Tag | None:
     return None
 
 
+def _naive_utc(dt: datetime) -> datetime:
+    """The DB stores naive UTC: convert, don't just drop the offset (Moscow time is +3h)."""
+    return dt.astimezone(UTC).replace(tzinfo=None) if dt.tzinfo else dt
+
+
 def _parse_dt(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%d"):
         try:
-            return datetime.strptime(value.replace("Z", "+0000"), fmt).replace(tzinfo=None)
+            return _naive_utc(datetime.strptime(value.replace("Z", "+0000"), fmt))
         except ValueError:
             continue
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=None)
+        return _naive_utc(datetime.fromisoformat(value))
     except ValueError:
         return None
 
@@ -72,6 +77,11 @@ def _first(d: dict[str, Any], *keys: str) -> Any:
     return None
 
 
+# hh experience codes (search page state) -> the labels vacancy pages show.
+_EXPERIENCE = {"noExperience": "не требуется", "between1And3": "1–3 года", "between3And6": "3–6 лет",
+               "moreThan6": "более 6 лет"}
+
+
 def _draft_from_state_item(item: dict[str, Any]) -> VacancyDraft | None:
     vid = _first(item, "vacancyId", "id")
     name = _first(item, "name", "title")
@@ -82,7 +92,7 @@ def _draft_from_state_item(item: dict[str, Any]) -> VacancyDraft | None:
     comp = as_dict(item.get("compensation") or item.get("salary"))
     snippet = as_dict(item.get("snippet"))
     parts = [html_to_text(str(snippet.get(k) or "")) for k in ("req", "requirement", "resp", "responsibility")]
-    work = json.dumps(item.get("workSchedule") or item.get("schedule") or item.get("workFormats") or "")
+    work = json.dumps([item.get(k) for k in ("workSchedule", "@workSchedule", "schedule", "workFormats")])
     links = as_dict(item.get("links"))
     pub = item.get("publicationTime") or item.get("publishedAt") or item.get("creationTime")
     if isinstance(pub, dict):
@@ -102,6 +112,7 @@ def _draft_from_state_item(item: dict[str, Any]) -> VacancyDraft | None:
         description="\n".join(p for p in parts if p),
         is_partial=True,
         published_at=_parse_dt(pub),
+        experience=_EXPERIENCE.get(str(item.get("workExperience") or "")),
     )
 
 
