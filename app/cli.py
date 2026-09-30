@@ -5,7 +5,7 @@
     worksaas set-password alice
     worksaas set-budget alice 10
     worksaas doctor [--llm]    # check config, job sites, bot token, LLM access
-    worksaas hh-login alice    # log in to hh.ru in a browser window, save session for auto-apply
+    worksaas site-login hh alice   # log in to hh.ru in a browser window, save session for auto-apply
     worksaas backup [path]     # consistent SQLite copy, safe while running
     worksaas run [--host 127.0.0.1] [--port 8000]
     worksaas worker            # separate worker process (if jobs.run_in_web_process=false)
@@ -18,7 +18,6 @@ import argparse
 import asyncio
 import getpass
 import logging
-import os
 import sys
 from pathlib import Path
 
@@ -118,58 +117,80 @@ def cmd_backup(args) -> None:
     print(f"Копия базы: {target}")
 
 
-def cmd_hh_login(args) -> None:
-    """Open a visible browser, let the user log in to hh.ru, save the session for auto-apply."""
-    import json
-
+def cmd_site_login(args) -> None:
+    """Open a visible browser, let the user log in to a job site, save the session for auto-apply."""
+    from app.apply import applier_for, supported_sources
     from app.apply import sessions
     from app.core.config import get_settings
     from app.core.db import session_scope
     from app.core.errors import ValidationFailed
+    from app.core.http import chromium_launch_options
 
+    applier = applier_for(args.site)
+    if applier is None:
+        sys.exit(f"Автоотклики для «{args.site}» не поддерживаются. Доступно: {', '.join(supported_sources())}")
     try:
+        from playwright.async_api import Error as PlaywrightError
         from playwright.async_api import async_playwright
     except ImportError:
         sys.exit('Нужен браузерный режим: pip install -e ".[browser]" && playwright install chromium')
 
     user_id = None
     if not args.export and not args.username:
-        sys.exit("Укажите логин в workSAAS (worksaas hh-login alice) или --export файл.json")
+        sys.exit(f"Укажите свой логин в workSAAS (worksaas site-login {args.site} alice) или --export файл.json")
     if not args.export:
         _migrate()
         with session_scope() as s:
             user_id = _get_user(s, args.username).id
 
-    async def login() -> dict:
-        async with async_playwright() as pw:
-            launch = {"headless": False}
-            if get_settings().apply.browser_executable:
-                launch["executable_path"] = get_settings().apply.browser_executable
-            browser = await pw.chromium.launch(**launch)
-            context = await browser.new_context(locale="ru-RU")
-            page = await context.new_page()
-            await page.goto("https://hh.ru/account/login")
-            print("В открывшемся окне войдите в hh.ru (как обычно, с кодом из SMS/почты).")
-            print("Когда увидите свой профиль, вернитесь сюда и нажмите Enter.")
-            await asyncio.get_running_loop().run_in_executor(None, input)
-            state = await context.storage_state()
-            await browser.close()
-            return state
+    def ask(prompt: str) -> None:
+        print(prompt)
+        input()
 
-    state = asyncio.run(login())
+    async def login() -> dict:
+        cfg = get_settings().apply
+        async with async_playwright() as pw:
+            browser = await pw.chromium.launch(**chromium_launch_options(
+                headless=False, use_proxy=cfg.use_proxy, executable=cfg.browser_executable))
+            try:
+                context = await browser.new_context(locale="ru-RU")
+                page = await context.new_page()
+                await page.goto(applier.login_url)
+                prompt = (f"В открывшемся окне войдите в {applier.title} как обычно (с кодом из SMS/почты).\n"
+                          "Когда увидите свой профиль, вернитесь сюда и нажмите Enter.")
+                for _ in range(3):
+                    await asyncio.get_running_loop().run_in_executor(None, ask, prompt)
+                    if not applier.account_url:
+                        break
+                    # The site sets cookies for anonymous visitors too: make sure we are really logged in.
+                    await page.goto(applier.account_url)
+                    if "login" not in page.url and "signup" not in page.url:
+                        break
+                    prompt = "Похоже, вход ещё не выполнен. Войдите в окне браузера и нажмите Enter ещё раз."
+                else:
+                    raise SystemExit("Вход не выполнен — запустите команду ещё раз.")
+                return await context.storage_state()
+            finally:
+                await browser.close()
+
     try:
-        cleaned = sessions.clean_state("hh", state)
+        state = asyncio.run(login())
+    except PlaywrightError:
+        sys.exit("Окно браузера закрылось раньше времени — запустите команду ещё раз.")
+    try:
+        cleaned = applier.clean_session(state)
     except ValidationFailed as exc:
         sys.exit(f"Не получилось: {exc}")
+    page_url = get_settings().telegram.public_url.rstrip("/") + "/autoapply"
     if args.export:
         path = Path(args.export)
-        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(cleaned, f)
-        print(f"Сессия сохранена в {path}. Загрузите её на странице «Автоотклики» и удалите файл.")
+        sessions.write_state(path.resolve(), cleaned)
+        print(f"Готово: {path}. Загрузите файл на странице «Автоотклики» ({page_url}) и затем удалите его — "
+              "он даёт доступ к вашему аккаунту.")
     else:
-        sessions.save_session("hh", user_id, cleaned)
-        print("Сессия hh.ru сохранена. Включите автоотклики на странице «Автоотклики».")
+        applier.save_session(user_id, cleaned)
+        print(f"Вход в {applier.title} сохранён. Включите автоотклики или нажмите «Продолжить» на странице "
+              f"«Автоотклики»: {page_url}")
 
 
 def cmd_doctor(args) -> None:
@@ -246,10 +267,16 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("usd", type=float)
     p.set_defaults(fn=cmd_set_budget)
 
-    p = sub.add_parser("hh-login", help="войти в hh.ru в окне браузера и сохранить сессию для автооткликов")
-    p.add_argument("username", nargs="?", help="логин в workSAAS (не нужен с --export)")
-    p.add_argument("--export", help="сохранить сессию в файл, чтобы загрузить её на сервер через веб")
-    p.set_defaults(fn=cmd_hh_login)
+    p = sub.add_parser("site-login", help="войти на сайт вакансий (hh) в окне браузера — для автооткликов")
+    p.add_argument("site", help="сайт: hh")
+    p.add_argument("username", nargs="?", help="ваш логин в workSAAS (не нужен с --export)")
+    p.add_argument("--export", help="сохранить вход в файл, чтобы загрузить его на сервер через веб")
+    p.set_defaults(fn=cmd_site_login)
+
+    p = sub.add_parser("hh-login", help="то же, что site-login hh")
+    p.add_argument("username", nargs="?", help="ваш логин в workSAAS (не нужен с --export)")
+    p.add_argument("--export", help="сохранить вход в файл, чтобы загрузить его на сервер через веб")
+    p.set_defaults(fn=cmd_site_login, site="hh")
 
     p = sub.add_parser("doctor", help="проверить настройки, доступность сайтов, бота и LLM")
     p.add_argument("--llm", action="store_true", help="сделать пробный запрос к каждой модели из маршрутов")

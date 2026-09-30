@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.bot.api import clip, esc
+from app.bot.api import button, clip, esc, keyboard, url_button
 from app.core.config import get_settings
 from app.models import Vacancy
 
@@ -15,6 +15,12 @@ RECOMMEND = {"apply": "откликаться", "apply_with_caveats": "откл�
 
 def web_url(path: str) -> str:
     return get_settings().telegram.public_url.rstrip("/") + path
+
+
+def autoapply_pause_keyboard(can_resume: bool) -> dict[str, Any]:
+    rows = [[button("▶️ Продолжить", "ar:1")]] if can_resume else []
+    rows.append([url_button("Открыть автоотклики", web_url("/autoapply"))])
+    return keyboard(*rows)
 
 
 def salary(v: Vacancy) -> str:

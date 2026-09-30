@@ -1,0 +1,9 @@
+<!doctype html><html><body>
+<a data-qa="vacancy-response-link-top" href="#" onclick="document.getElementById('popup').style.display='block';return false">Откликнуться</a>
+<div id="popup" style="display:none">
+  <textarea id="letter" data-qa="vacancy-response-popup-form-letter-input"></textarea>
+  <button data-qa="vacancy-response-submit-popup" onclick="
+    document.body.insertAdjacentHTML('beforeend', '<div data-qa=vacancy-response-success-standard-notification>'
+      + document.getElementById('letter').value.length + '</div>')">Откликнуться</button>
+</div>
+</body></html>

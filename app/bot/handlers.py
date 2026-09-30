@@ -11,7 +11,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.bot.api import TelegramAPI, TelegramError, button, clip, esc, keyboard, url_button
-from app.bot.texts import VERDICTS, salary, web_url
+from app.bot.texts import VERDICTS, autoapply_pause_keyboard, salary, web_url
 from app.core.db import session_scope
 from app.jobs import enqueue
 from app.models import Resume, SavedSearch, User
@@ -331,46 +331,90 @@ async def cmd_autoapply(ctx: Ctx) -> None:
     with session_scope() as s:
         o = autoapply_svc.overview(s, ctx.user_id)
         cfg = o["cfg"]
-        if not cfg.enabled:
-            text, kb = "Автоотклики выключены. Включить и настроить — на сайте.", keyboard(
-                [url_button("Настроить", web_url("/autoapply"))])
+        open_btn = [url_button("Открыть автоотклики", web_url("/autoapply"))]
+        waiting = f"\nЖдут вашего решения: {o['awaiting']}." if o["awaiting"] else ""
+        if not cfg.enabled or not o["server_enabled"]:
+            text, kb = f"Автоотклики: {esc(o['idle_reason'])}. Включить и настроить — на сайте.", keyboard(open_btn)
         elif cfg.paused_reason:
-            text = f"⏸ На паузе: {esc(clip(cfg.paused_reason, 300))}"
-            kb = keyboard([button("▶️ Продолжить", "ar:1")], [url_button("Открыть", web_url("/autoapply"))])
+            can_resume = any(r["ok"] for r in o["readiness"].values())
+            text = f"⏸ На паузе: {esc(clip(cfg.paused_reason, 400))}"
+            kb = autoapply_pause_keyboard(can_resume)
         else:
-            text = (f"▶️ Работают. Сегодня отправлено {o['sent_today']} из {cfg.daily_limit}, "
-                    f"в очереди {len(o['queue'])}.")
-            kb = keyboard([button("⏸ Пауза", "ap:1")], [url_button("Открыть", web_url("/autoapply"))])
+            state = "▶️ Работают" if not o["idle_reason"] else f"⏳ Включены, но ждут: {esc(o['idle_reason'])}"
+            text = (f"{state}. Сегодня отправлено {o['sent_today']} из {o['daily_limit']}, "
+                    f"в очереди {len(o['queue'])}.{waiting}")
+            kb = keyboard([button("⏸ Пауза", "ap:1")], open_btn)
     await ctx.reply(text, kb)
+
+
+async def _replace_app_buttons(ctx: Ctx, app_id: str, row: list[dict[str, Any]]) -> None:
+    """Swap the ✅/❌ row of this application for a result + undo row."""
+    if not (ctx.message_id and ctx.markup):
+        return
+    rows, replaced = [], False
+    for old in ctx.markup.get("inline_keyboard", []):
+        mine = any(b.get("callback_data", "") in (f"aa:{app_id}", f"ax:{app_id}", f"au:{app_id}") for b in old)
+        if not mine:
+            rows.append(old)
+        elif not replaced:
+            rows.append(row)
+            replaced = True
+    try:
+        await ctx.api.edit_markup(ctx.chat_id, ctx.message_id, {"inline_keyboard": rows})
+    except TelegramError:
+        pass  # message too old to edit — the decision is saved anyway
 
 
 @callback("aa")
 async def cb_autoapply_approve(ctx: Ctx) -> None:
     with session_scope() as s:
-        autoapply_svc.approve(s, ctx.user_id, _int_arg(ctx.args))
-    await ctx.api.answer_callback(ctx.callback_id, "Откликнусь в ближайшее разрешённое время")
+        answer = autoapply_svc.approve(s, ctx.user_id, _int_arg(ctx.args))
+    await ctx.api.answer_callback(ctx.callback_id, answer[:190])
+    await _replace_app_buttons(ctx, ctx.args, [button("✅ Подтверждено · не откликаться", f"ax:{ctx.args}")])
 
 
 @callback("ax")
 async def cb_autoapply_cancel(ctx: Ctx) -> None:
     with session_scope() as s:
-        autoapply_svc.cancel(s, ctx.user_id, _int_arg(ctx.args))
-    await ctx.api.answer_callback(ctx.callback_id, "Пропускаю")
+        answer = autoapply_svc.cancel(s, ctx.user_id, _int_arg(ctx.args))
+    await ctx.api.answer_callback(ctx.callback_id, answer[:190])
+    await _replace_app_buttons(ctx, ctx.args, [button("❌ Не откликаемся · вернуть", f"au:{ctx.args}")])
+
+
+@callback("au")
+async def cb_autoapply_restore(ctx: Ctx) -> None:
+    with session_scope() as s:
+        answer = autoapply_svc.restore(s, ctx.user_id, _int_arg(ctx.args))
+    await ctx.api.answer_callback(ctx.callback_id, answer[:190])
+    await _replace_app_buttons(ctx, ctx.args, [button("✅ Откликнуться", f"aa:{ctx.args}"),
+                                               button("❌ Не откликаться", f"ax:{ctx.args}")])
 
 
 @callback("ap")
 async def cb_autoapply_pause(ctx: Ctx) -> None:
     with session_scope() as s:
-        autoapply_svc.pause(s, ctx.user_id, "поставлено на паузу из Telegram")
+        autoapply_svc.pause(s, ctx.user_id, "вы поставили паузу")
         autoapply_svc.mark_pause_notified(s, ctx.user_id)
-    await ctx.api.answer_callback(ctx.callback_id, "На паузе")
+    await ctx.api.answer_callback(ctx.callback_id, "Автоотклики на паузе")
+    if ctx.message_id:
+        try:
+            await ctx.api.edit_markup(ctx.chat_id, ctx.message_id, autoapply_pause_keyboard(True))
+        except TelegramError:
+            pass
 
 
 @callback("ar")
 async def cb_autoapply_resume(ctx: Ctx) -> None:
     with session_scope() as s:
         autoapply_svc.resume_after_pause(s, ctx.user_id)
-    await ctx.api.answer_callback(ctx.callback_id, "Продолжаю")
+        idle = autoapply_svc.idle_reason(s, ctx.user_id)
+    await ctx.api.answer_callback(ctx.callback_id, ("Продолжаю" + (f", но пока ждут: {idle}" if idle else ""))[:190])
+    if ctx.message_id:
+        try:
+            await ctx.api.edit_markup(ctx.chat_id, ctx.message_id, keyboard(
+                [button("⏸ Пауза", "ap:1")], [url_button("Открыть автоотклики", web_url("/autoapply"))]))
+        except TelegramError:
+            pass
 
 
 STATUS_DONE = {"hidden": "🙈 Скрыто", "saved": "⭐ Сохранено", "applied": "✅ Откликнулся",

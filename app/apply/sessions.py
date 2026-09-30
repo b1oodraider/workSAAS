@@ -2,19 +2,21 @@
 
 A session file gives access to the user's job-site account: it is stored with 0600
 permissions, filtered to the site's own cookies, and never shown back in the UI.
+Appliers use these helpers through `Applier.save_session` & co, which supply the site's domains.
 """
 
 from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from app.core.config import get_settings
 from app.core.errors import ValidationFailed
 
-SITE_DOMAINS = {"hh": ("hh.ru", "hh.kz", "hh.uz")}
 MAX_SESSION_BYTES = 512 * 1024
 
 
@@ -22,57 +24,49 @@ def session_path(site: str, user_id: int) -> Path:
     return Path(get_settings().data_dir) / "sessions" / f"{site}_{int(user_id)}.json"
 
 
-def has_session(site: str, user_id: int) -> bool:
-    return session_path(site, user_id).is_file()
-
-
-def _belongs(domain: str, site: str) -> bool:
+def _belongs(domain: str, domains: tuple[str, ...]) -> bool:
     domain = domain.lstrip(".").lower()
-    return any(domain == d or domain.endswith("." + d) for d in SITE_DOMAINS[site])
+    return any(domain == d or domain.endswith("." + d) for d in domains)
 
 
-def clean_state(site: str, raw: Any) -> dict[str, Any]:
-    """Validate a storage_state and keep only this site's cookies and origins."""
+def clean_state(raw: Any, domains: tuple[str, ...], title: str) -> dict[str, Any]:
+    """Validate a storage_state and keep only the site's cookies and origins."""
     if not isinstance(raw, dict) or not isinstance(raw.get("cookies"), list):
-        raise ValidationFailed("Это не файл сессии браузера (ожидается storage_state из worksaas hh-login)")
-    cookies = [c for c in raw["cookies"] if isinstance(c, dict) and _belongs(str(c.get("domain", "")), site)]
+        raise ValidationFailed("Это не тот файл: нужен файл, который создаёт команда worksaas site-login … --export")
+    cookies = [c for c in raw["cookies"] if isinstance(c, dict) and _belongs(str(c.get("domain", "")), domains)]
     if not cookies:
-        raise ValidationFailed("В файле нет cookies для hh.ru — войдите в hh.ru и экспортируйте сессию заново")
+        raise ValidationFailed(f"В файле нет cookies для {title} — войдите на сайт и экспортируйте сессию заново")
     origins = [o for o in raw.get("origins") or []
-               if isinstance(o, dict) and _belongs(str(o.get("origin", "")).split("//")[-1].split("/")[0], site)]
+               if isinstance(o, dict) and _belongs(urlsplit(str(o.get("origin", ""))).hostname or "", domains)]
     return {"cookies": cookies, "origins": origins}
 
 
-def save_session(site: str, user_id: int, raw: Any) -> None:
-    state = clean_state(site, raw)
-    path = session_path(site, user_id)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(".tmp")
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(state, f)
-    os.replace(tmp, path)
-
-
-def save_session_bytes(site: str, user_id: int, data: bytes) -> None:
+def parse_bytes(data: bytes) -> Any:
     if len(data) > MAX_SESSION_BYTES:
         raise ValidationFailed("Файл сессии слишком большой")
     try:
-        raw = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValidationFailed("Файл сессии повреждён (не JSON)") from exc
-    save_session(site, user_id, raw)
+        return json.loads(data.decode("utf-8"))
+    except (ValueError, RecursionError) as exc:  # bad UTF-8, not JSON, absurdly nested
+        raise ValidationFailed("Файл повреждён — создайте его заново командой worksaas site-login") from exc
 
 
-def load_session(site: str, user_id: int) -> dict[str, Any] | None:
-    path = session_path(site, user_id)
+def write_state(path: Path, state: dict[str, Any]) -> None:
+    """Atomic write readable only by the app's user (a unique temp file: no races, no symlinks)."""
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".session-", suffix=".tmp")  # created 0600
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+        os.replace(tmp, path)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def read_state(path: Path) -> dict[str, Any] | None:
     if not path.is_file():
         return None
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return None
-
-
-def delete_session(site: str, user_id: int) -> None:
-    session_path(site, user_id).unlink(missing_ok=True)

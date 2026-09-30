@@ -209,3 +209,29 @@ fetch_limit = 50      # вакансий на один запрос в одно�
 concurrency = 2           # параллельных LLM-задач
 run_in_web_process = true # false — запускайте `worksaas worker` отдельно
 scheduler_interval_s = 60
+
+# ---------------------------------------------------------------------------
+# АВТООТКЛИКИ (hh.ru, через браузер от имени пользователя). Каждый включает их сам на
+# странице «Автоотклики»; здесь — жёсткие потолки для всех. Нарушает правила hh.ru — см. README.
+# ---------------------------------------------------------------------------
+[apply]
+enabled = true                  # false — выключить автоотклики у всех
+hard_daily_max = 30             # больше этого в сутки не выставить никому
+min_interval_floor_s = 60       # и не чаще одного отклика в столько секунд
+max_consecutive_failures = 3    # после стольких ошибок подряд — пауза
+headless = true                 # false — видеть окно браузера (отладка на ноутбуке)
+browser_executable = ""         # свой Chrome/Chromium вместо скачанного Playwright
+use_proxy = false               # ходить на hh.ru через proxy_url (сервер за границей)
+
+# Селекторы страниц hh.ru. Написаны по известной разметке и НЕ проверены на живом сайте;
+# если hh.ru поменяет вёрстку — правьте здесь, без кода. Через запятую — «любой из».
+# [apply.hh_selectors]
+# response_button = '[data-qa="vacancy-response-link-top"], [data-qa="vacancy-response-link-bottom"]'
+# already_applied = '[data-qa="vacancy-response-link-view-topic"]'
+# relocation_confirm = '[data-qa="relocation-warning-confirm"]'
+# resume_option = '[data-qa="resume-title"]'
+# letter_toggle = '[data-qa="vacancy-response-letter-toggle"]'
+# letter_input = '[data-qa="vacancy-response-popup-form-letter-input"], textarea[name="letter"]'
+# submit = '[data-qa="vacancy-response-submit-popup"]'
+# success = '[data-qa="vacancy-response-success-standard-notification"], [data-qa="vacancy-response-link-view-topic"]'
+# login_form = '[data-qa="account-login-form"], [data-qa="login"]'

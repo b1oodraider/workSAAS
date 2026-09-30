@@ -20,6 +20,8 @@ class CoverLetterParams(BaseModel):
             "short": "короткое (отклик на hh.ru)", "medium": "среднее", "long": "длинное"}})
     language: str = Field("", title="Язык письма (пусто = язык вакансии)")
     emphasis: str = Field("", title="Что подчеркнуть / доп. контекст")
+    # Auto-apply sends letters unseen: keep private wishes (salary floor etc.) out of the prompt.
+    use_preferences: bool = Field(True, title="Учитывать мои пожелания к работе")
 
 
 def _context(session, user_id, resume, vacancy, params) -> dict:
@@ -33,7 +35,7 @@ FEATURE = register(
         title="Сопроводительное письмо",
         description="Персональное письмо под вакансию на основе резюме (и анализа соответствия, если он есть).",
         subject="resume_vacancy",
-        task=LLMTask(name="cover_letter", version="2", output=CoverLetter,
+        task=LLMTask(name="cover_letter", version="3", output=CoverLetter,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         params_model=CoverLetterParams,
         context_builder=_context,

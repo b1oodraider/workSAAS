@@ -27,6 +27,10 @@ ROUTES = {
     "/vacancy/3": "vacancy_questionnaire.html",
     "/vacancy/4": "vacancy_captcha.html",
     "/vacancy/5": "vacancy_login.html",
+    "/vacancy/6": "vacancy_external.html",
+    "/vacancy/7": "vacancy_single.html",
+    "/vacancy/8": "vacancy_nosuccess.html",
+    "/vacancy/9": "vacancy_closed.html",
 }
 
 
@@ -73,9 +77,11 @@ def mock_site():
 def applier(env, tmp_path, mock_site, user_id):
     env.data_dir = str(tmp_path)
     env.apply.browser_executable = CHROMIUM
-    sessions.save_session("hh", user_id, {"cookies": [
-        {"name": "hhtoken", "value": "x", "domain": ".hh.ru", "path": "/"}], "origins": []})
-    return HHBrowserApplier(base_url=mock_site)
+    hh = HHBrowserApplier(base_url=mock_site)
+    hh.success_timeout_ms = 1500
+    hh.save_session(user_id, {"cookies": [{"name": "hhtoken", "value": "x", "domain": ".hh.ru", "path": "/"}],
+                              "origins": []})
+    return hh
 
 
 def req(user_id, vid, **kw):
@@ -84,9 +90,19 @@ def req(user_id, vid, **kw):
                         site_resume_title=kw.get("title", "python backend"))
 
 
-async def test_applies_with_chosen_resume_and_letter(applier, user_id):
+async def test_applies_with_chosen_resume_and_letter(applier, user_id, monkeypatch):
+    seen = {}
+    real = applier._flow
+
+    async def spy(page, url, r, sel):
+        result = await real(page, url, r, sel)
+        seen["typed"] = await page.locator(sel.success).first.inner_text()
+        return result
+
+    monkeypatch.setattr(applier, "_flow", spy)
     result = await applier.apply(req(user_id, 1))
     assert result.status == "applied", result.reason
+    assert seen["typed"] == str(len("Здравствуйте! Письмо."))  # the letter really went into the form
 
 
 async def test_wrong_resume_title_fails(applier, user_id):
@@ -94,34 +110,74 @@ async def test_wrong_resume_title_fails(applier, user_id):
     assert result.status == "failed" and "дизайнер" in result.reason
 
 
+async def test_single_resume_needs_no_choice(applier, user_id):
+    result = await applier.apply(req(user_id, 7, title="что угодно"))
+    assert result.status == "applied", result.reason
+
+
 @pytest.mark.parametrize("vid,status,word", [
     (2, "skipped", "уже откликались"),
     (3, "skipped", "вопросы"),
-    (4, "blocked", "капчу"),
-    (5, "blocked", "войдите"),
+    (6, "skipped", "своём сайте"),
+    (9, "skipped", "нет кнопки"),
+    (4, "blocked", "не робот"),
+    (5, "blocked", "войдите заново"),
 ])
 async def test_decisions(applier, user_id, vid, status, word):
     result = await applier.apply(req(user_id, vid))
     assert result.status == status and word in result.reason
 
 
+async def test_unconfirmed_submit_may_have_been_sent(applier, user_id):
+    result = await applier.apply(req(user_id, 8))
+    assert result.status == "failed" and result.maybe_sent and "Отклики" in result.reason
+
+
+async def test_login_page_marks_session_stale_until_new_login(applier, user_id):
+    assert (await applier.apply(req(user_id, 5))).status == "blocked"
+    ok, hint = applier.is_ready(user_id)
+    assert not ok and "войдите заново" in hint
+    result = await applier.apply(req(user_id, 1))
+    assert result.status == "blocked"  # no browser run with a session hh.ru already rejected
+    applier.save_session(user_id, {"cookies": [{"name": "hhtoken", "value": "y", "domain": ".hh.ru"}]})
+    assert applier.is_ready(user_id)[0]
+
+
+async def test_non_numeric_vacancy_id_never_opens_the_browser(applier, user_id):
+    result = await applier.apply(req(user_id, "../applicant/settings"))
+    assert result.status == "skipped"
+
+
+async def test_browser_error_is_transient(applier, user_id, env):
+    env.apply.browser_executable = "/nonexistent/chrome"
+    result = await applier.apply(req(user_id, 1))
+    assert result.status == "failed" and result.transient
+
+
 async def test_missing_session_is_blocked(env, tmp_path, user_id, mock_site):
     env.data_dir = str(tmp_path / "empty")
     env.apply.browser_executable = CHROMIUM
     result = await HHBrowserApplier(base_url=mock_site).apply(req(user_id, 1))
-    assert result.status == "blocked" and "hh-login" in result.reason
+    assert result.status == "blocked" and "войдите" in result.reason
 
 
 def test_session_file_is_filtered_and_private(env, tmp_path, user_id):
     env.data_dir = str(tmp_path)
-    sessions.save_session("hh", user_id, {"cookies": [
+    hh = HHBrowserApplier()
+    hh.save_session(user_id, {"cookies": [
         {"name": "a", "value": "1", "domain": ".hh.ru"},
         {"name": "evil", "value": "2", "domain": ".google.com"}], "origins": [
-        {"origin": "https://hh.ru", "localStorage": []}, {"origin": "https://evil.com", "localStorage": []}]})
-    state = sessions.load_session("hh", user_id)
-    assert [c["name"] for c in state["cookies"]] == ["a"] and len(state["origins"]) == 1
-    assert oct(os.stat(sessions.session_path("hh", user_id)).st_mode & 0o777) == "0o600"
+        {"origin": "https://hh.ru", "localStorage": []}, {"origin": "https://spb.hh.ru", "localStorage": []},
+        {"origin": "https://hh.ru.evil.com", "localStorage": []},
+        {"origin": "https://evil.com//hh.ru", "localStorage": []}]})
+    state = hh.load_session(user_id)
+    assert [c["name"] for c in state["cookies"]] == ["a"]
+    assert [o["origin"] for o in state["origins"]] == ["https://hh.ru", "https://spb.hh.ru"]
+    path = sessions.session_path("hh", user_id)
+    assert oct(os.stat(path).st_mode & 0o777) == "0o600"
+    assert oct(os.stat(path.parent).st_mode & 0o777) == "0o700"
+    assert list(path.parent.glob("*.tmp")) == []
     from app.core.errors import ValidationFailed
 
     with pytest.raises(ValidationFailed):
-        sessions.save_session_bytes("hh", user_id, b'{"cookies": [{"domain": "evil.com"}]}')
+        hh.save_session_bytes(user_id, b'{"cookies": [{"domain": "evil.com"}]}')

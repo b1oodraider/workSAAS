@@ -184,6 +184,9 @@ class ApplySettings(BaseModel):
     headless: bool = True
     # Optional path to a Chrome/Chromium binary instead of Playwright's bundled one.
     browser_executable: str = ""
+    # Route the applier's browser through `proxy_url`, e.g. when the server is abroad and
+    # hh.ru should see a Russian IP like the one the session was created from.
+    use_proxy: bool = False
     hh_selectors: HHApplySelectors = Field(default_factory=HHApplySelectors)
 
 

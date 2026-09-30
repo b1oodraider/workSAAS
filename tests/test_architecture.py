@@ -29,7 +29,7 @@ RULES = [
     ("app.services", ("app.web", "app.bot"), ()),
     # Interfaces talk to services/jobs, not to LLM providers or source fetchers.
     ("app.web", ("app.bot.runner", "app.bot.handlers", "app.llm.providers", "app.llm.gateway", "app.sources.web",
-                 "app.apply.hh_browser"), ()),
+                 "app.apply"), ()),
     ("app.bot", ("app.web", "app.llm.providers", "app.llm.gateway", "app.sources", "app.apply"), ()),
 ]
 

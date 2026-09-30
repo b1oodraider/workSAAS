@@ -1,105 +1,142 @@
 {% extends "base.html" %}
 {% block content %}
 {% set cfg = data.cfg %}
+{% set any_login = data.readiness.values()|selectattr("ok")|list %}
 <h1>Автоотклики</h1>
 
 <div class="card">
-  {% if not cfg.enabled %}
-    <p><b>Выключены.</b> Включите в настройках ниже.</p>
-  {% elif cfg.paused_reason %}
+  {% if cfg.paused_reason and cfg.enabled %}
     <div class="flash flash-error">⏸ На паузе: {{ cfg.paused_reason }}</div>
-    <form method="post" action="/autoapply/resume"><button class="btn-small">Продолжить</button></form>
-  {% else %}
-    <p>▶️ <b>Работают</b> — {{ modes[cfg.mode] }}. Сегодня отправлено {{ data.sent_today }} из {{ cfg.daily_limit }},
-      не чаще одного отклика в {{ (cfg.min_interval_s // 60) }} мин, с {{ cfg.active_from_hour }}:00 до {{ cfg.active_to_hour }}:00.</p>
+    {% if any_login %}
+      <form method="post" action="/autoapply/resume"><button class="btn-small">Продолжить</button></form>
+    {% else %}
+      <p><a href="#login-{{ data.readiness.keys()|first }}">Войдите заново</a> — после входа автоотклики продолжатся сами.</p>
+    {% endif %}
+  {% elif data.running and not data.idle_reason %}
+    <p>▶️ <b>Работают</b> (режим: {{ modes[cfg.mode] }}). Сегодня отправлено {{ data.sent_today }} из {{ data.daily_limit }},
+      не чаще одного отклика примерно в {{ data.interval_min }} мин, с {{ cfg.active_from_hour }}:00 до {{ cfg.active_to_hour }}:00.
+      {% if data.awaiting %}<br><b>Ждут вашего решения: {{ data.awaiting }}</b> — <a href="#queue">посмотреть</a>.{% endif %}</p>
     <form method="post" action="/autoapply/pause"><button class="btn-small secondary">Пауза</button></form>
+  {% elif data.running %}
+    <p>⏳ Включены, но сейчас не отправляют: {{ data.idle_reason }}.
+      Сегодня отправлено {{ data.sent_today }} из {{ data.daily_limit }}.
+      {% if data.awaiting %}<br><b>Ждут вашего решения: {{ data.awaiting }}</b> — <a href="#queue">посмотреть</a>.{% endif %}</p>
+    <form method="post" action="/autoapply/pause"><button class="btn-small secondary">Пауза</button></form>
+  {% else %}
+    <p><b>{{ data.idle_reason|capitalize }}.</b></p>
+    {% if data.server_enabled %}
+    <p>Чтобы начать:</p>
+    <ol class="checklist">
+      <li>{% if any_login %}✅{% else %}❌{% endif %} <a href="#login-{{ data.readiness.keys()|first }}">Войдите в {{ (data.readiness.values()|first).title }}</a></li>
+      <li>{% if data.queue or data.history %}✅{% else %}▫️{% endif %} Запустите подбор в <a href="/searches">«Поисках»</a> — отклики идут только на вакансии, которые ИИ оценил высоко</li>
+      <li>▫️ Проверьте <a href="#settings">настройки</a> и поставьте галочку «Автоотклики включены»</li>
+    </ol>
+    {% endif %}
   {% endif %}
-  <p class="muted">Отклики идут по одному: сначала отбираются лучшие совпадения (оценка ИИ не ниже порога,
-    без серьёзных красных флагов), для каждой пишется своё сопроводительное. Вакансии с анкетой работодателя
-    пропускаются — на них лучше откликнуться вручную. Если hh.ru покажет капчу или выйдет из аккаунта, автоотклики
-    сами встанут на паузу.</p>
-  <p class="muted">⚠️ Автоматические отклики противоречат правилам hh.ru: даже в медленном режиме есть риск ограничений
-    аккаунта. Режим «спрашивать перед каждым откликом» безопаснее.</p>
+  <p class="muted">Как это работает: сначала отбираются лучшие совпадения (оценка ИИ не ниже порога, без серьёзных
+    красных флагов), для каждого заранее пишется своё короткое письмо, потом отклики уходят по одному, с паузами.
+    Вакансии с анкетой работодателя или откликом на сайте компании пропускаются — на них лучше откликнуться вручную.
+    При капче или выходе из аккаунта автоотклики сами встают на паузу.</p>
 </div>
 
 <div class="cols">
-<div class="card">
-  <h2>Вход в hh.ru</h2>
-  {% set hh = data.readiness.hh %}
-  {% if hh.ok %}
-    <p>✅ Сессия сохранена — приложение откликается от вашего имени.</p>
-    <form method="post" action="/autoapply/session/delete" onsubmit="return confirm('Удалить сессию hh.ru с сервера?')">
-      <button class="btn-small secondary">Удалить сессию с сервера</button></form>
+{% for site, st in data.readiness.items() %}
+<div class="card" id="login-{{ site }}">
+  <h2>Вход в {{ st.title }}</h2>
+  {% if st.ok %}
+    <p>✅ Вход выполнен — отклики уходят от вашего имени.</p>
+    <form method="post" action="/autoapply/session/{{ site }}/delete"
+          onsubmit="return confirm('Выйти из {{ st.title }} в workSAAS? Автоотклики остановятся, пока вы не войдёте снова.')">
+      <button class="btn-small secondary">Выйти из {{ st.title }}</button></form>
   {% else %}
-    <p>❌ {{ hh.hint }}</p>
+    <p>❌ {{ st.hint }}</p>
   {% endif %}
-  <details {% if not hh.ok %}open{% endif %}><summary>Как войти</summary>
+  <details {% if not st.ok %}open{% endif %}><summary>Как войти</summary>
+    <p class="muted">Пароль от {{ st.title }} приложению не передаётся: вы входите в обычном окне браузера, а сохраняется
+      только «вход» (cookies). Нужен доступ к компьютеру, где установлен workSAAS, — если его нет, попросите администратора
+      помочь с первым входом.</p>
     <ol>
-      <li>На компьютере с установленным приложением выполните <code>worksaas hh-login ВАШ_ЛОГИН</code> —
-        откроется окно браузера, войдите в hh.ru как обычно и вернитесь в терминал.</li>
-      <li>Если приложение работает на сервере: выполните у себя
-        <code>worksaas hh-login ВАШ_ЛОГИН --export hh-session.json</code> и загрузите файл сюда.</li>
+      <li>Если workSAAS запущен на этом же компьютере — выполните в терминале
+        <code id="login-cmd-{{ site }}">worksaas site-login {{ site }} {{ user.username }}</code>
+        <button type="button" class="btn-small secondary" onclick="copyText('login-cmd-{{ site }}', this)">копировать</button>
+        (это ваш логин в workSAAS, не в {{ st.title }}). Откроется окно браузера: войдите как обычно и вернитесь в терминал.</li>
+      <li>Если workSAAS открыт по адресу в интернете — выполните у себя
+        <code>worksaas site-login {{ site }} --export session.json</code> и загрузите получившийся файл сюда:</li>
     </ol>
-    <form method="post" action="/autoapply/session" enctype="multipart/form-data" class="row">
+    <form method="post" action="/autoapply/session/{{ site }}" enctype="multipart/form-data" class="row">
       <input type="file" name="file" accept=".json" required>
-      <button class="btn-small">Загрузить сессию</button>
+      <button class="btn-small">Загрузить</button>
     </form>
-    <p class="muted">Файл сессии даёт доступ к вашему аккаунту hh.ru: он хранится на сервере с правами только
-      для приложения и никому не показывается. Удалить его можно в любой момент.</p>
+    <p class="muted">Этот файл даёт доступ к вашему аккаунту {{ st.title }}: храните его как пароль и удалите после загрузки.
+      На сервере он доступен только приложению; выйти можно в любой момент.</p>
   </details>
 </div>
+{% endfor %}
 
-<div class="card">
+<div class="card" id="settings">
   <h2>Настройки</h2>
-  <form method="post" action="/autoapply/settings" data-busy>
+  <form method="post" action="/autoapply/settings">
     <label class="check"><input type="checkbox" name="enabled" value="true" {% if cfg.enabled %}checked{% endif %}> Автоотклики включены</label>
+    <p class="muted">⚠️ hh.ru не разрешает автоматические отклики. Мы отправляем их по одному и с паузами, как человек,
+      но hh.ru всё равно может временно ограничить аккаунт. Чтобы снизить риск, держите не больше 10–15 откликов в день
+      и подтверждайте отклики сами.</p>
     <label>Режим
       <select name="mode">{% for k, v in modes.items() %}<option value="{{ k }}" {% if cfg.mode == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
-    <label>Минимальная оценка соответствия (50–100)
+    <label>Откликаться на вакансии с оценкой ИИ от (50–100; 80 — только сильные совпадения)
       <input type="number" name="min_score" min="50" max="100" value="{{ cfg.min_score }}"></label>
     <label>Не больше откликов в день (до {{ data.hard_daily_max }})
       <input type="number" name="daily_limit" min="1" max="{{ data.hard_daily_max }}" value="{{ cfg.daily_limit }}"></label>
-    <label>Не чаще, чем раз в N минут (от {{ (data.min_interval_floor_s + 59) // 60 }})
+    <label>Пауза между откликами, минут (не меньше {{ (data.min_interval_floor_s + 59) // 60 }}; реальная пауза чуть больше и случайна)
       <input type="number" name="min_interval_min" min="{{ (data.min_interval_floor_s + 59) // 60 }}" value="{{ cfg.min_interval_s // 60 }}"></label>
     <div class="row">
-      <label>С (час) <input type="number" name="active_from_hour" min="0" max="23" value="{{ cfg.active_from_hour }}"></label>
-      <label>До (час) <input type="number" name="active_to_hour" min="1" max="24" value="{{ cfg.active_to_hour }}"></label>
+      <label>Откликаться с (час) <input type="number" name="active_from_hour" min="0" max="23" value="{{ cfg.active_from_hour }}"></label>
+      <label>до (час) <input type="number" name="active_to_hour" min="1" max="24" value="{{ cfg.active_to_hour }}"></label>
     </div>
-    <label>Резюме, по которому оценивать и писать письма
-      <select name="resume_id"><option value="">любое (по результатам подбора)</option>
+    <label>Резюме в workSAAS (для оценки и писем)
+      <select name="resume_id"><option value="">то, с которым вакансия лучше совпала</option>
         {% for r in data.resumes %}<option value="{{ r.id }}" {% if cfg.resume_id == r.id %}selected{% endif %}>{{ r.title }}</option>{% endfor %}</select></label>
-    <label>Резюме на hh.ru (часть названия, если их несколько)
-      <input type="text" name="hh_resume_title" value="{{ cfg.hh_resume_title }}" placeholder="например: Python backend"></label>
+    <label>Какое резюме отправлять на сайте (часть названия, как на hh.ru; если резюме одно — оставьте пустым)
+      <input type="text" name="site_resume_title" value="{{ cfg.site_resume_title }}" placeholder="например: Python backend"></label>
     <label>Тон писем
-      <select name="letter_tone">{% for k, v in tones.items() %}<option value="{{ k }}" {% if cfg.letter_tone == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+      <select name="letter_tone">{% for k, v in data.tones.items() %}<option value="{{ k }}" {% if cfg.letter_tone == k %}selected{% endif %}>{{ v }}</option>{% endfor %}</select></label>
+    <p class="muted">Письма для автооткликов пишутся без ваших «пожеланий к работе» (зарплата и т.п.) — их работодатель не увидит.
+      Письмо со ссылками или контактами, которых нет в резюме, всегда ждёт вашей проверки.</p>
     <p><button class="btn-small">Сохранить</button></p>
   </form>
 </div>
 </div>
 
-<div class="card">
+<div class="card" id="queue">
   <div class="row"><h2 style="margin:0">Очередь</h2><span class="spacer"></span>
     <form method="post" action="/autoapply/plan"><button class="btn-small secondary">Подобрать сейчас</button></form></div>
   {% if data.queue %}
   <table>
-    <tr><th>ИИ</th><th>Вакансия</th><th>Статус</th><th></th></tr>
+    <tr><th>ИИ</th><th>Вакансия</th><th>Статус</th></tr>
     {% for a in data.queue %}{% set v = a.vacancy %}
     <tr>
       <td><span class="score {{ a.score|score_class }}">{{ (a.score or 0)|int }}</span></td>
-      <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a><div class="muted">{{ v.company or "" }} · {{ v|money }}</div></td>
-      <td>{{ app_status[a.status.value] }}{% if a.reason %}<div class="muted">{{ a.reason }}</div>{% endif %}</td>
-      <td class="row">
-        {% if a.status.value == "queued" and cfg.mode == "confirm" %}
+      <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a><div class="muted">{{ v.company or "" }} · {{ v|money }}
+        {% if v.url|safe_url %} · <a href="{{ v.url|safe_url }}" target="_blank" rel="noopener noreferrer">на сайте</a>{% endif %}</div>
+        {% if a.letter %}<details {% if a.status.value == "review" %}open{% endif %}><summary>Письмо</summary><div class="letter">{{ a.letter }}</div></details>
+        {% elif a.status.value in ("queued", "approved") %}<div class="muted">письмо пишется…</div>{% endif %}
+      </td>
+      <td>{{ app_status[a.status.value] }}{% if a.reason %}<div class="muted">{{ a.reason }}</div>{% endif %}
+        <div class="row">
+        {% if a.status.value == "review" or (a.status.value == "queued" and cfg.mode == "confirm") %}
           <form method="post" action="/autoapply/{{ a.id }}/approve"><button class="btn-small">Откликнуться</button></form>
         {% endif %}
-        {% if a.status.value in ("queued", "approved") %}
-          <form method="post" action="/autoapply/{{ a.id }}/cancel"><button class="btn-small secondary">Пропустить</button></form>
+        {% if a.status.value in ("queued", "review", "approved") %}
+          <form method="post" action="/autoapply/{{ a.id }}/cancel"><button class="btn-small secondary">Не откликаться</button></form>
         {% endif %}
+        </div>
       </td>
     </tr>
     {% endfor %}
   </table>
-  {% else %}<p class="muted">Пусто. Очередь пополняется из лучших совпадений ваших поисков каждую минуту, пока автоотклики включены.</p>{% endif %}
+  {% else %}<p class="muted">Пусто.
+    {% if data.running %}Очередь пополняется из лучших совпадений ваших <a href="/searches">поисков</a> раз в минуту.
+    {% else %}Когда автоотклики включены, очередь пополняется из лучших совпадений ваших <a href="/searches">поисков</a>.{% endif %}
+    Нет вакансий с оценкой от {{ cfg.min_score }} — снизьте порог или запустите подбор.</p>{% endif %}
 </div>
 
 {% if data.history %}
@@ -110,10 +147,14 @@
     {% for a in data.history %}{% set v = a.vacancy %}
     <tr>
       <td class="muted">{{ (a.sent_at or a.created_at)|dt }}</td>
-      <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a><div class="muted">{{ v.company or "" }}</div></td>
+      <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a><div class="muted">{{ v.company or "" }}
+        {% if v.url|safe_url %} · <a href="{{ v.url|safe_url }}" target="_blank" rel="noopener noreferrer">на сайте</a>{% endif %}</div></td>
       <td class="status-{{ 'done' if a.status.value == 'applied' else ('failed' if a.status.value == 'failed' else 'queued') }}">
         {{ app_status[a.status.value] }}{% if a.reason %}<div class="muted">{{ a.reason }}</div>{% endif %}
         {% if a.letter %}<details><summary>Письмо</summary><div class="letter">{{ a.letter }}</div></details>{% endif %}
+        {% if a.status.value == "cancelled" %}
+          <form method="post" action="/autoapply/{{ a.id }}/restore"><button class="btn-small secondary">Вернуть в очередь</button></form>
+        {% endif %}
       </td>
     </tr>
     {% endfor %}

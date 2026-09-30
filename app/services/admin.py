@@ -57,6 +57,11 @@ def set_active(s: Session, actor_id: int, user_id: int, active: bool) -> None:
     if actor_id == user_id and not active:
         raise ValidationFailed("Нельзя заблокировать самого себя")
     _get(s, user_id).is_active = active
+    if not active:
+        # A blocked user's saved job-site logins must not stay usable on the server.
+        from app.services import autoapply as autoapply_svc
+
+        autoapply_svc.forget_all_sessions(user_id)
 
 
 def reset_password(s: Session, user_id: int) -> str:

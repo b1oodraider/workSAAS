@@ -347,3 +347,14 @@ def test_safe_path_rejects_backslash_tricks():
     from app.web.deps import safe_path
 
     assert safe_path("/\\evil.com") == "/" and safe_path("//evil.com") == "/" and safe_path("/tracker") == "/tracker"
+
+
+def test_playwright_proxy_splits_credentials(env):
+    from app.core.http import playwright_proxy
+
+    env.proxy_url = "http://us%40er:p%3Ass@proxy.example:3128"
+    assert playwright_proxy(False) is None
+    assert playwright_proxy(True) == {"server": "http://proxy.example:3128",
+                                      "username": "us@er", "password": "p:ss"}
+    env.proxy_url = "socks5://10.0.0.1:1080"
+    assert playwright_proxy(True) == {"server": "socks5://10.0.0.1:1080"}

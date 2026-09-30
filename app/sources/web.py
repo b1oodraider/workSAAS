@@ -22,6 +22,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.core.config import get_settings
+from app.core.http import chromium_launch_options
 from app.sources.base import SourceError
 
 log = logging.getLogger(__name__)
@@ -170,10 +171,7 @@ class BrowserFetcher:
             raise SourceError(
                 "Браузерный режим не установлен: pip install -e \".[browser]\" && playwright install chromium"
             ) from exc
-        launch: dict[str, Any] = {"headless": True}
-        proxy = get_settings().proxy_url
-        if self.use_proxy and proxy:
-            launch["proxy"] = {"server": proxy}
+        launch = chromium_launch_options(use_proxy=self.use_proxy)
         try:
             self._pw = await async_playwright().start()
             self._browser = await self._pw.chromium.launch(**launch)
