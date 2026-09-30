@@ -9,7 +9,7 @@ import asyncio
 import logging
 
 from app.bot.api import TelegramAPI, TelegramError
-from app.bot.digest import send_digests, send_reminders
+from app.bot.digest import send_autoapply_updates, send_digests, send_reminders
 from app.bot.handlers import handle_update, menu_commands
 from app.core.config import get_settings
 
@@ -78,7 +78,7 @@ class BotRunner:
             await self._sleep(interval)
             if self._conflict:
                 continue
-            for tick in (send_digests, send_reminders):
+            for tick in (send_digests, send_reminders, send_autoapply_updates):
                 try:
                     await tick(self.api)
                 except Exception:  # noqa: BLE001

@@ -15,6 +15,7 @@ from app.bot.texts import VERDICTS, salary, web_url
 from app.core.db import session_scope
 from app.jobs import enqueue
 from app.models import Resume, SavedSearch, User
+from app.services import autoapply as autoapply_svc
 from app.services import matches as matches_svc
 from app.services import search as search_svc
 from app.services import telegram_links
@@ -323,6 +324,53 @@ async def cb_snooze(ctx: Ctx) -> None:
     with session_scope() as s:
         vacancy_svc.snooze(s, ctx.user_id, _int_arg(ctx.args), days=7)
     await ctx.api.answer_callback(ctx.callback_id, "Напомню через неделю")
+
+
+@command("autoapply", "автоотклики: статус, пауза")
+async def cmd_autoapply(ctx: Ctx) -> None:
+    with session_scope() as s:
+        o = autoapply_svc.overview(s, ctx.user_id)
+        cfg = o["cfg"]
+        if not cfg.enabled:
+            text, kb = "Автоотклики выключены. Включить и настроить — на сайте.", keyboard(
+                [url_button("Настроить", web_url("/autoapply"))])
+        elif cfg.paused_reason:
+            text = f"⏸ На паузе: {esc(clip(cfg.paused_reason, 300))}"
+            kb = keyboard([button("▶️ Продолжить", "ar:1")], [url_button("Открыть", web_url("/autoapply"))])
+        else:
+            text = (f"▶️ Работают. Сегодня отправлено {o['sent_today']} из {cfg.daily_limit}, "
+                    f"в очереди {len(o['queue'])}.")
+            kb = keyboard([button("⏸ Пауза", "ap:1")], [url_button("Открыть", web_url("/autoapply"))])
+    await ctx.reply(text, kb)
+
+
+@callback("aa")
+async def cb_autoapply_approve(ctx: Ctx) -> None:
+    with session_scope() as s:
+        autoapply_svc.approve(s, ctx.user_id, _int_arg(ctx.args))
+    await ctx.api.answer_callback(ctx.callback_id, "Откликнусь в ближайшее разрешённое время")
+
+
+@callback("ax")
+async def cb_autoapply_cancel(ctx: Ctx) -> None:
+    with session_scope() as s:
+        autoapply_svc.cancel(s, ctx.user_id, _int_arg(ctx.args))
+    await ctx.api.answer_callback(ctx.callback_id, "Пропускаю")
+
+
+@callback("ap")
+async def cb_autoapply_pause(ctx: Ctx) -> None:
+    with session_scope() as s:
+        autoapply_svc.pause(s, ctx.user_id, "поставлено на паузу из Telegram")
+        autoapply_svc.mark_pause_notified(s, ctx.user_id)
+    await ctx.api.answer_callback(ctx.callback_id, "На паузе")
+
+
+@callback("ar")
+async def cb_autoapply_resume(ctx: Ctx) -> None:
+    with session_scope() as s:
+        autoapply_svc.resume_after_pause(s, ctx.user_id)
+    await ctx.api.answer_callback(ctx.callback_id, "Продолжаю")
 
 
 STATUS_DONE = {"hidden": "🙈 Скрыто", "saved": "⭐ Сохранено", "applied": "✅ Откликнулся",

@@ -227,3 +227,93 @@ def test_global_switch_disables_everything(user_id, setup, applier, env):
     enable(user_id)
     env.apply.enabled = False
     assert autoapply.autoapply_tick() == []
+
+
+def test_web_page_and_actions(user_id, setup, applier, env, tmp_path):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    env.data_dir = str(tmp_path)
+    with TestClient(create_app(start_background=False)) as client:
+        client.post("/login", data={"username": "alice", "password": "password123"})
+        r = client.get("/autoapply")
+        assert r.status_code == 200 and "Выключены" in r.text
+        r = client.post("/autoapply/settings", data={"enabled": "true", "mode": "confirm", "min_score": "80",
+                                                      "daily_limit": "5", "min_interval_min": "3",
+                                                      "active_from_hour": "0", "active_to_hour": "24",
+                                                      "letter_tone": "formal"})
+        assert "автоотклики включены" in r.text
+        r = client.post("/autoapply/plan")
+        assert "В очередь добавлено: 3" in r.text
+        with session_scope() as s:
+            first = s.scalars(select(Application).order_by(Application.score.desc())).first()
+        client.post(f"/autoapply/{first.id}/approve")
+        with session_scope() as s:
+            assert s.get(Application, first.id).status == ApplicationStatus.approved
+        bad = client.post("/autoapply/session", files={"file": ("s.json", b'{"cookies": []}', "application/json")})
+        assert "нет cookies" in bad.text
+        ok = client.post("/autoapply/session", files={"file": ("s.json",
+                         b'{"cookies": [{"name": "hhtoken", "value": "1", "domain": ".hh.ru"}]}', "application/json")})
+        assert "Сессия hh.ru сохранена" in ok.text
+        assert client.post("/autoapply/pause").status_code == 200
+        with session_scope() as s:
+            assert autoapply.get_config(s, user_id).paused_reason
+        client.post("/logout")
+        with session_scope() as s:
+            from app.core.security import hash_password
+
+            s.add(User(username="bob", password_hash=hash_password("password123")))
+        client.post("/login", data={"username": "bob", "password": "password123"})
+        assert client.post(f"/autoapply/{first.id}/cancel").status_code == 404
+
+
+async def test_bot_confirm_flow_and_reports(user_id, setup, applier, env):
+    import json
+
+    import httpx
+
+    from app.bot.api import TelegramAPI
+    from app.bot.digest import send_autoapply_updates
+    from app.bot.handlers import handle_update
+
+    sent = []
+
+    def handler(request):
+        method = request.url.path.rsplit("/", 1)[-1]
+        from urllib.parse import parse_qs
+
+        sent.append((method, {k: v[0] for k, v in parse_qs(request.content.decode()).items()}))
+        return httpx.Response(200, json={"ok": True, "result": {"message_id": 1}})
+
+    api = TelegramAPI("1:X", transport=httpx.MockTransport(handler))
+    with session_scope() as s:
+        s.get(User, user_id).telegram_chat_id = 555
+    enable(user_id, mode="confirm")
+    autoapply.autoapply_tick()  # plans the queue, sends nothing in confirm mode
+    assert await send_autoapply_updates(api) == 1
+    msg = [p for m, p in sent if m == "sendMessage"][-1]
+    buttons = json.loads(msg["reply_markup"])["inline_keyboard"]
+    approve_data = buttons[0][0]["callback_data"]
+    assert approve_data.startswith("aa:") and "Откликнуться" in msg["text"]
+    assert await send_autoapply_updates(api) == 0  # not asked twice
+
+    await handle_update(api, {"update_id": 1, "callback_query": {
+        "id": "c", "data": approve_data, "from": {}, "message": {"chat": {"id": 555}}}})
+    assert len(autoapply.autoapply_tick()) == 1
+    await drain()
+    assert await send_autoapply_updates(api) == 1
+    assert "✅" in [p for m, p in sent if m == "sendMessage"][-1]["text"]
+
+    applier.results = [ApplyResult("blocked", "hh.ru показал капчу")]
+    with session_scope() as s:
+        second = s.scalars(select(Application).where(Application.status == ApplicationStatus.queued)
+                           .order_by(Application.score.desc())).first()
+        autoapply.approve(s, user_id, second.id)
+        for a in s.scalars(select(Application)):
+            if a.sent_at:
+                a.sent_at -= timedelta(hours=1)
+    autoapply.autoapply_tick()
+    await drain()
+    await send_autoapply_updates(api)
+    assert any("на паузе" in p.get("text", "") for m, p in sent if m == "sendMessage")

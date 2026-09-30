@@ -5,6 +5,7 @@
     worksaas set-password alice
     worksaas set-budget alice 10
     worksaas doctor [--llm]    # check config, job sites, bot token, LLM access
+    worksaas hh-login alice    # log in to hh.ru in a browser window, save session for auto-apply
     worksaas backup [path]     # consistent SQLite copy, safe while running
     worksaas run [--host 127.0.0.1] [--port 8000]
     worksaas worker            # separate worker process (if jobs.run_in_web_process=false)
@@ -17,6 +18,7 @@ import argparse
 import asyncio
 import getpass
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -116,6 +118,60 @@ def cmd_backup(args) -> None:
     print(f"Копия базы: {target}")
 
 
+def cmd_hh_login(args) -> None:
+    """Open a visible browser, let the user log in to hh.ru, save the session for auto-apply."""
+    import json
+
+    from app.apply import sessions
+    from app.core.config import get_settings
+    from app.core.db import session_scope
+    from app.core.errors import ValidationFailed
+
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        sys.exit('Нужен браузерный режим: pip install -e ".[browser]" && playwright install chromium')
+
+    user_id = None
+    if not args.export and not args.username:
+        sys.exit("Укажите логин в workSAAS (worksaas hh-login alice) или --export файл.json")
+    if not args.export:
+        _migrate()
+        with session_scope() as s:
+            user_id = _get_user(s, args.username).id
+
+    async def login() -> dict:
+        async with async_playwright() as pw:
+            launch = {"headless": False}
+            if get_settings().apply.browser_executable:
+                launch["executable_path"] = get_settings().apply.browser_executable
+            browser = await pw.chromium.launch(**launch)
+            context = await browser.new_context(locale="ru-RU")
+            page = await context.new_page()
+            await page.goto("https://hh.ru/account/login")
+            print("В открывшемся окне войдите в hh.ru (как обычно, с кодом из SMS/почты).")
+            print("Когда увидите свой профиль, вернитесь сюда и нажмите Enter.")
+            await asyncio.get_running_loop().run_in_executor(None, input)
+            state = await context.storage_state()
+            await browser.close()
+            return state
+
+    state = asyncio.run(login())
+    try:
+        cleaned = sessions.clean_state("hh", state)
+    except ValidationFailed as exc:
+        sys.exit(f"Не получилось: {exc}")
+    if args.export:
+        path = Path(args.export)
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cleaned, f)
+        print(f"Сессия сохранена в {path}. Загрузите её на странице «Автоотклики» и удалите файл.")
+    else:
+        sessions.save_session("hh", user_id, cleaned)
+        print("Сессия hh.ru сохранена. Включите автоотклики на странице «Автоотклики».")
+
+
 def cmd_doctor(args) -> None:
     from app.doctor import run
 
@@ -189,6 +245,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("username")
     p.add_argument("usd", type=float)
     p.set_defaults(fn=cmd_set_budget)
+
+    p = sub.add_parser("hh-login", help="войти в hh.ru в окне браузера и сохранить сессию для автооткликов")
+    p.add_argument("username", nargs="?", help="логин в workSAAS (не нужен с --export)")
+    p.add_argument("--export", help="сохранить сессию в файл, чтобы загрузить её на сервер через веб")
+    p.set_defaults(fn=cmd_hh_login)
 
     p = sub.add_parser("doctor", help="проверить настройки, доступность сайтов, бота и LLM")
     p.add_argument("--llm", action="store_true", help="сделать пробный запрос к каждой модели из маршрутов")

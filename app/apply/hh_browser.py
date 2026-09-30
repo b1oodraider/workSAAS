@@ -58,7 +58,10 @@ class HHBrowserApplier(Applier):
         url = f"{self.base_url}/vacancy/{req.external_id}"
         try:
             async with async_playwright() as pw:
-                launch: dict[str, Any] = {"headless": cfg.headless}
+                # No background calls to Google services from the automation browser.
+                launch: dict[str, Any] = {"headless": cfg.headless, "args": [
+                    "--disable-background-networking", "--disable-component-update", "--no-first-run",
+                    "--disable-sync", "--metrics-recording-only", "--disable-default-apps"]}
                 if cfg.browser_executable:
                     launch["executable_path"] = cfg.browser_executable
                 browser = await pw.chromium.launch(**launch)

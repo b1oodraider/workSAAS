@@ -15,10 +15,11 @@ from typing import Any
 
 from sqlalchemy import select, update
 
-from app.bot.api import MAX_TEXT, TelegramAPI, TelegramError, button, clip, esc, keyboard
+from app.bot.api import MAX_TEXT, TelegramAPI, TelegramError, button, clip, esc, keyboard, url_button
 from app.bot.texts import salary, web_url
 from app.core.db import session_scope, utcnow
 from app.models import Analysis, User, UserVacancy, Vacancy
+from app.services import autoapply as autoapply_svc
 from app.services import matches as matches_svc
 from app.services import users as users_svc
 
@@ -169,4 +170,67 @@ async def send_reminders(api: TelegramAPI) -> int:
             continue
         if await _deliver(api, chat_id, "\n".join(lines), keyboard(*kb), UserVacancy.reminded_at, won):
             sent += 1
+    return sent
+
+
+# --------------------------------------------------------------------------- auto-apply
+
+APPLY_RESULT_ICONS = {"applied": "✅", "skipped": "⏭", "failed": "⚠️"}
+
+
+async def send_autoapply_updates(api: TelegramAPI) -> int:
+    """Confirm-mode questions, results of sent applications and pause notices."""
+    sent = 0
+    with session_scope() as s:
+        chats = list(s.execute(select(User.id, User.telegram_chat_id)
+                               .where(User.telegram_chat_id.is_not(None), User.is_active.is_(True))).all())
+    for user_id, chat_id in chats:
+        with session_scope() as s:
+            upd = autoapply_svc.pending_updates(s, user_id)
+            confirm = [(a.id, a.vacancy.id, clip(a.vacancy.title, 100), clip(a.vacancy.company or "", 60),
+                        int(a.score or 0)) for a in upd["to_confirm"]]
+            results = [(a.id, a.status.value, clip(a.vacancy.title, 100), clip(a.reason, 150)) for a in upd["results"]]
+            pause_note = upd["pause_note"]
+            if pause_note:
+                autoapply_svc.mark_pause_notified(s, user_id)
+        if pause_note:
+            try:
+                await api.send(chat_id, f"⏸ <b>Автоотклики на паузе</b>\n{esc(clip(pause_note, 400))}",
+                               reply_markup=keyboard([button("▶️ Продолжить", "ar:1")]))
+                sent += 1
+            except TelegramError as exc:
+                log.warning("pause notice to %s failed: %s", chat_id, exc)
+        if confirm:
+            ids = autoapply_svc.claim_for_notification([c[0] for c in confirm])
+            items = [c for c in confirm if c[0] in ids]
+            if items:
+                lines, kb = ["🤖 <b>Откликнуться на эти вакансии?</b>"], []
+                for i, (app_id, vid, title, company, score) in enumerate(items, 1):
+                    lines.append(f'\n{i}. <b>{score}</b> — <a href="{esc(web_url(f"/vacancies/{vid}"))}">'
+                                 f"{esc(title)}</a>{' · ' + esc(company) if company else ''}")
+                    kb.append([button(f"{i}. ✅ Откликнуться", f"aa:{app_id}"), button(f"{i}. ❌", f"ax:{app_id}")])
+                lines.append("\nПисьмо напишу сам под каждую вакансию.")
+                try:
+                    await api.send(chat_id, "\n".join(lines), reply_markup=keyboard(*kb))
+                    sent += 1
+                except TelegramError as exc:
+                    log.warning("confirm request to %s failed: %s", chat_id, exc)
+                    if not exc.permanent:
+                        autoapply_svc.release_notification(ids)
+        if results:
+            ids = autoapply_svc.claim_for_notification([r[0] for r in results])
+            items = [r for r in results if r[0] in ids]
+            if items:
+                lines = ["📨 <b>Автоотклики</b>"]
+                for _app_id, status, title, reason in items:
+                    icon = APPLY_RESULT_ICONS.get(status, "•")
+                    lines.append(f"{icon} {esc(title)}" + (f" — <i>{esc(reason)}</i>" if status != "applied" else ""))
+                try:
+                    await api.send(chat_id, "\n".join(lines),
+                                   reply_markup=keyboard([url_button("Подробнее", web_url("/autoapply"))]))
+                    sent += 1
+                except TelegramError as exc:
+                    log.warning("apply report to %s failed: %s", chat_id, exc)
+                    if not exc.permanent:
+                        autoapply_svc.release_notification(ids)
     return sent

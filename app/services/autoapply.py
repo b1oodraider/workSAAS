@@ -342,3 +342,61 @@ def overview(s: Session, user_id: int) -> dict[str, Any]:
         "readiness": readiness,
         "resumes": resume_svc.list_for_user(s, user_id),
     }
+
+
+# --------------------------------------------------------------------------- site sessions
+
+
+def save_site_session(user_id: int, data: bytes, site: str = "hh") -> None:
+    from app.apply import sessions
+
+    sessions.save_session_bytes(site, user_id, data)
+
+
+def delete_site_session(user_id: int, site: str = "hh") -> None:
+    from app.apply import sessions
+
+    sessions.delete_session(site, user_id)
+
+
+# --------------------------------------------------------------------------- notifications (bot)
+
+
+def claim_for_notification(ids: list[int]) -> list[int]:
+    """Mark applications as reported; returns ids this process won (safe with two bot processes)."""
+    from sqlalchemy import update
+
+    won = []
+    with session_scope() as s:
+        for app_id in ids:
+            res = s.execute(update(Application).where(Application.id == app_id, Application.notified_at.is_(None))
+                            .values(notified_at=utcnow()))
+            if res.rowcount:
+                won.append(app_id)
+    return won
+
+
+def release_notification(ids: list[int]) -> None:
+    from sqlalchemy import update
+
+    with session_scope() as s:
+        s.execute(update(Application).where(Application.id.in_(ids)).values(notified_at=None))
+
+
+def pending_updates(s: Session, user_id: int) -> dict[str, Any]:
+    """What the bot should tell this user: pause, applications to confirm, fresh results."""
+    cfg = get_config(s, user_id)
+    base = select(Application).where(Application.user_id == user_id, Application.notified_at.is_(None))
+    to_confirm = []
+    if cfg.enabled and cfg.mode == "confirm" and not cfg.paused_reason:
+        to_confirm = list(s.scalars(base.where(Application.status == ApplicationStatus.queued)
+                                    .order_by(Application.score.desc()).limit(5)))
+    results = list(s.scalars(base.where(Application.status.in_(
+        [ApplicationStatus.applied, ApplicationStatus.failed, ApplicationStatus.skipped]))
+        .order_by(Application.id).limit(10)))
+    pause_note = cfg.paused_reason if (cfg.enabled and cfg.paused_reason and not cfg.paused_notified) else ""
+    return {"to_confirm": to_confirm, "results": results, "pause_note": pause_note}
+
+
+def mark_pause_notified(s: Session, user_id: int) -> None:
+    get_config(s, user_id).paused_notified = True
