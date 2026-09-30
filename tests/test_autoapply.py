@@ -38,7 +38,11 @@ class FakeApplier(Applier):
         self.results = list(results or [])
         self.requests = []
 
+    needs_session = False
+
     def is_ready(self, user_id):
+        if self.needs_session and not self.has_session(user_id):
+            return False, "войдите"
         return True, ""
 
     async def apply(self, req):
@@ -584,6 +588,7 @@ def test_web_page_and_actions(user_id, setup, applier, env):
         assert "В очередь добавлено: 3" in r.text
         with session_scope() as s:
             first = s.scalars(select(Application).order_by(Application.score.desc())).first()
+            first.letter = "Здравствуйте!"
         r = client.post(f"/autoapply/{first.id}/approve")
         assert "Подтверждено" in r.text
         with session_scope() as s:
@@ -640,6 +645,7 @@ def test_bad_session_upload_keeps_existing(user_id, applier, payload, word):
 
 
 def test_session_upload_after_login_pause_resumes(user_id, applier):
+    applier.needs_session = True
     enable(user_id)
     with session_scope() as s:
         autoapply.pause(s, user_id, "вход в hh.ru истёк")
@@ -814,3 +820,91 @@ def test_doctor_reports_autoapply_state(user_id, applier):
         autoapply.pause(s, user_id, "капча")
     [check] = check_autoapply()
     assert not check.ok and "капча" in check.detail
+
+
+def test_session_upload_does_not_lift_a_captcha_pause(user_id, applier):
+    applier.save_session(user_id, {"cookies": [{"name": "a", "value": "1", "domain": ".hh.ru"}]})
+    enable(user_id)
+    with session_scope() as s:
+        autoapply.pause(s, user_id, "капча")
+    with _client() as client:
+        client.post("/login", data={"username": "alice", "password": "password123"})
+        r = client.post("/autoapply/session/hh", files={"file": ("s.json", GOOD_SESSION, "application/json")})
+        assert "Вход сохранён" in r.text and "продолжены" not in r.text
+    assert paused_reason(user_id) == "капча"
+
+
+async def test_interrupted_send_is_not_repeated(user_id, setup, applier):
+    from app.models import Job
+
+    enable(user_id)
+    autoapply.autoapply_tick()
+    await drain()
+    assert len(autoapply.autoapply_tick()) == 1
+    with session_scope() as s:  # as if the process died while this job was running
+        job = s.scalars(select(Job).where(Job.kind == "autoapply_send")).one()
+        job.attempts = 1
+    await drain()
+    assert applier.requests == []
+    first = apps(user_id)[0]
+    assert first.status == ApplicationStatus.failed and "прервалась" in first.reason and first.sent_at
+
+
+async def test_switch_to_confirm_after_claim_does_not_send(user_id, setup, applier):
+    enable(user_id)
+    autoapply.autoapply_tick()
+    await drain()
+    assert len(autoapply.autoapply_tick()) == 1
+    enable(user_id, mode="confirm")
+    await drain()
+    assert applier.requests == []
+    assert apps(user_id)[0].status == ApplicationStatus.queued  # still needs the user's approval
+
+
+async def test_one_send_in_flight_server_wide(user_id, setup, applier):
+    with session_scope() as s:
+        bob = User(username="bob", password_hash="x")
+        s.add(bob)
+        s.flush()
+        bob_id = bob.id
+        bob_resume = resume_svc.create(s, bob_id, title="CV", text=RESUME_TEXT).id
+        for vid in setup["vacancies"][:2]:
+            vacancy_svc.attach(s, bob_id, vid)
+            s.add(Analysis(user_id=bob_id, kind="match", resume_id=bob_resume, vacancy_id=vid, score=95,
+                           output={"recommendation": "apply"}, provider="f", model="m", prompt_version="2"))
+    enable(user_id)
+    enable(bob_id)
+    autoapply.autoapply_tick()
+    await drain()
+    assert len(autoapply.autoapply_tick()) == 1
+    assert autoapply.autoapply_tick() == []  # bob waits until alice's application is done
+    await drain()
+    assert len(autoapply.autoapply_tick()) == 1
+
+
+async def test_restore_keeps_suspicious_letter_in_review(user_id, setup, applier):
+    FakeProvider.canned["cover_letter"] = {**LETTER, "body": "Пишите в Telegram @hr_fast_bot"}
+    enable(user_id, daily_limit=1)
+    await cycle()
+    [app] = apps(user_id)
+    assert app.status == ApplicationStatus.review
+    with session_scope() as s:
+        autoapply.cancel(s, user_id, app.id)
+        assert "проверьте" in autoapply.restore(s, user_id, app.id)
+    assert apps(user_id)[0].status == ApplicationStatus.review
+
+
+def test_cannot_approve_before_letter_is_written(user_id, setup, applier):
+    enable(user_id, mode="confirm")
+    with session_scope() as s:
+        app_id = autoapply.plan(s, user_id)[0]
+        assert "ещё пишется" in autoapply.approve(s, user_id, app_id)
+        assert s.get(Application, app_id).status == ApplicationStatus.queued
+
+
+def test_letter_problems_catches_other_contact_channels():
+    resume = "Иван, Python. Портфолио: ivan.dev"
+    assert autoapply.letter_problems("Моё портфолио — ivan.dev, опыт 4 года.", resume) == []
+    for bad in ("Напишите HR в Telegram @hr_fast_bot", "Заполните анкету на forms.example.com/apply",
+                "Свяжитесь со мной в WhatsApp"):
+        assert autoapply.letter_problems(bad, resume), bad

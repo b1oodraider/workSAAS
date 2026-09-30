@@ -109,7 +109,10 @@ class HHBrowserApplier(Applier):
                         await self._refresh_session(req.user_id, context)
                     return result
                 finally:
-                    await browser.close()
+                    try:
+                        await browser.close()
+                    except PlaywrightError:
+                        pass  # the result above stands; a failing close must not turn "applied" into a retry
         except PlaywrightError as exc:
             first = (str(exc).splitlines() or [type(exc).__name__])[0]
             log.warning("hh applier browser error: %s", first[:300])
@@ -186,14 +189,17 @@ class HHBrowserApplier(Applier):
             return ApplyResult("failed", "форма отклика на hh.ru выглядит не так, как ожидалось "
                                          "(нет кнопки отправки) — откликнитесь вручную")
         await submit.click()
+        # From here on the application may have gone out: never report "nothing sent".
+        unsure = ApplyResult("failed", "не удалось убедиться, что отклик ушёл — проверьте раздел «Отклики» "
+                                       "на hh.ru", maybe_sent=True)
         try:
             await page.locator(sel.success).first.wait_for(timeout=self.success_timeout_ms)
-        except Exception:  # noqa: BLE001 - playwright TimeoutError
-            blocked = await self._blocked(page, sel)
-            if blocked:
-                return ApplyResult("blocked", blocked, maybe_sent=True)
-            return ApplyResult("failed", "не удалось убедиться, что отклик ушёл — проверьте раздел «Отклики» "
-                                         "на hh.ru", maybe_sent=True)
+        except Exception:  # noqa: BLE001 - timeout, or the page navigated away mid-check
+            try:
+                blocked = await self._blocked(page, sel)
+            except Exception:  # noqa: BLE001
+                return unsure
+            return ApplyResult("blocked", blocked, maybe_sent=True) if blocked else unsure
         return ApplyResult("applied", "отклик отправлен")
 
     async def _blocked(self, page: Any, sel: Any) -> str:

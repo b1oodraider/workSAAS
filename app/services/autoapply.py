@@ -11,11 +11,11 @@ Guard rails (never exceeded, whatever the user sets or had set before an admin l
   links, contacts or unusual length waits for the user ("review") even in auto mode;
 - anything that looks like a captcha/logout ("blocked"), a spent budget or several
   failures in a row pauses auto-apply until the user presses «Продолжить»;
-- one browser at a time per process, so several accounts never apply simultaneously.
+- one application in flight server-wide, so several accounts never apply simultaneously.
 In "confirm" mode nothing is sent before the user approves it (web page or Telegram).
 
 Flow: `autoapply_tick` (every scheduler tick) recovers stuck rows, tops up the queue,
-starts `autoapply_prepare` (letters) and at most one `autoapply_send` per user.
+starts `autoapply_prepare` (letters) and at most one `autoapply_send` at a time.
 """
 
 from __future__ import annotations
@@ -226,6 +226,10 @@ _URL_RE = re.compile(r"(?:https?://|www\.|t\.me/)\S+", re.I)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE_RE = re.compile(r"\+?\d[\d\s()\-]{8,}\d")
 _TAG_RE = re.compile(r"</?(?:resume|vacancy|preferences|user_text|match_analysis)\b", re.I)
+_HANDLE_RE = re.compile(r"(?<![\w.])@[A-Za-z][\w]{4,}")
+_BARE_LINK_RE = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.(?:ru|com|io|me|org|net|рф|su|info|app|dev)(?:/\S*)?(?![\w.])",
+                           re.I)
+_MESSENGER_RE = re.compile(r"\b(?:whats\s?app|вотсап|ватсап|viber|вайбер|телеграм\w*|telegram|скайп|skype)\b", re.I)
 
 
 def letter_problems(letter: str, resume_text: str) -> list[str]:
@@ -240,8 +244,16 @@ def letter_problems(letter: str, resume_text: str) -> list[str]:
     resume_digits = re.sub(r"\D", "", resume_text)
     if any(m.group(0).rstrip(".,;)").lower() not in resume_lower for m in _URL_RE.finditer(letter)):
         problems.append("в письме есть ссылка, которой нет в резюме")
-    if any(m.group(0).rstrip(".").lower() not in resume_lower for m in _EMAIL_RE.finditer(letter)):
+    emails = [m.group(0).rstrip(".") for m in _EMAIL_RE.finditer(letter)]
+    if any(e.lower() not in resume_lower for e in emails):
         problems.append("в письме есть e-mail, которого нет в резюме")
+    without_emails = _EMAIL_RE.sub(" ", _URL_RE.sub(" ", letter))
+    if any(m.group(0).rstrip(".,;)").lower() not in resume_lower for m in _BARE_LINK_RE.finditer(without_emails)):
+        problems.append("в письме есть адрес сайта, которого нет в резюме")
+    if any(m.group(0).lower() not in resume_lower for m in _HANDLE_RE.finditer(without_emails)):
+        problems.append("в письме есть @-контакт, которого нет в резюме")
+    if any(m.group(0).lower() not in resume_lower for m in _MESSENGER_RE.finditer(letter)):
+        problems.append("в письме упомянут мессенджер, которого нет в резюме")
     if any(re.sub(r"\D", "", m.group(0)) not in resume_digits for m in _PHONE_RE.finditer(letter)):
         problems.append("в письме есть номер телефона, которого нет в резюме")
     if _TAG_RE.search(letter):
@@ -371,26 +383,39 @@ def _recover_stuck(s: Session, user_id: int, now: datetime) -> None:
         app.notified_at = None
 
 
-def _tick_user(user_id: int, now: datetime) -> int | None:
+def _sending_anywhere(s: Session) -> bool:
+    return bool(s.scalar(select(func.count(Job.id)).where(
+        Job.kind == "autoapply_send", Job.status.in_([JobStatus.queued, JobStatus.running]))))
+
+
+def _tick_user(user_id: int, now: datetime, *, may_send: bool) -> int | None:
     with session_scope() as s:
+        _recover_stuck(s, user_id, now)
         if not is_running(get_config(s, user_id)):
             return None
-        _recover_stuck(s, user_id, now)
         plan(s, user_id)
         wants_letters = _needs_letters(s, user_id) and not _active_jobs(s, user_id, "autoapply_prepare")
     if wants_letters:
         enqueue("autoapply_prepare", {}, user_id=user_id, title="Автоотклики: письма")
+    if not may_send:
+        return None
     with session_scope() as s:
         app = next_to_send(s, user_id, now)
         if app is None:
             return None
         # Claim atomically: a web/bot cancel or a second scheduler may have touched it meanwhile.
-        claimed = s.execute(update(Application).where(Application.id == app.id, Application.status == app.status)
+        was = app.status
+        claimed = s.execute(update(Application).where(Application.id == app.id, Application.status == was)
                             .values(status=ApplicationStatus.sending, sent_at=now)).rowcount
         if not claimed:
             return None
         app_id = app.id
-    enqueue("autoapply_send", {"application_id": app_id}, user_id=user_id, title="Автоотклик")
+    try:
+        enqueue("autoapply_send", {"application_id": app_id, "from": was.value}, user_id=user_id,
+                title="Автоотклик")
+    except Exception:
+        _finish(app_id, was, "", sent_at=None)  # no job: nothing will be sent, release the claim
+        raise
     return app_id
 
 
@@ -402,16 +427,19 @@ def autoapply_tick(now: datetime | None = None) -> list[int]:
     with session_scope() as s:
         user_ids = list(s.scalars(
             select(AutoApplySettings.user_id).join(User, User.id == AutoApplySettings.user_id)
-            .where(AutoApplySettings.enabled.is_(True), AutoApplySettings.paused_reason == "",
-                   User.is_active.is_(True))))
+            .where(AutoApplySettings.enabled.is_(True), User.is_active.is_(True))))
+        # One application in flight server-wide: jobs never wait for the browser (holding a worker
+        # slot) and several accounts never apply from the same IP at the same time.
+        may_send = not _sending_anywhere(s)
     for user_id in user_ids:
         try:
-            app_id = _tick_user(user_id, now)
+            app_id = _tick_user(user_id, now, may_send=may_send)
         except Exception:  # noqa: BLE001 - one user's bad data must not stop everyone else
             log.exception("autoapply tick failed for user %s", user_id)
             continue
         if app_id is not None:
             started.append(app_id)
+            may_send = False
     return started
 
 
@@ -434,7 +462,7 @@ def _count_failure(user_id: int) -> None:
                               "причины в истории; возможно, сайт изменился или нужно войти заново")
 
 
-def _precheck(user_id: int, vacancy_id: int) -> str:
+def _precheck(user_id: int, vacancy_id: int, was: ApplicationStatus) -> str:
     """Re-check right before sending: things may have changed while the job waited in line."""
     with session_scope() as s:
         user = s.get(User, user_id)
@@ -443,6 +471,8 @@ def _precheck(user_id: int, vacancy_id: int) -> str:
             return "wait"
         if not _in_active_hours(cfg, utcnow()):
             return "wait"
+        if cfg.mode == "confirm" and was != ApplicationStatus.approved:
+            return "wait"  # switched to confirm mode after it was picked: ask first
         if not _still_wanted(s, user_id, vacancy_id):
             return "cancel"
     return ""
@@ -451,16 +481,25 @@ def _precheck(user_id: int, vacancy_id: int) -> str:
 @job_handler("autoapply_send")
 async def _send_job(ctx: JobContext) -> dict:
     app_id = int(ctx.payload["application_id"])
+    # The status it had before the claim is where it goes back if nothing is sent.
+    back = ApplicationStatus(ctx.payload.get("from", ApplicationStatus.queued.value))
     with session_scope() as s:
         app = s.get(Application, app_id)
         if app is None or app.user_id != ctx.user_id or app.status != ApplicationStatus.sending:
             return {"skipped": "application is not in sending state"}
+        if ctx.attempt > 1:
+            # This handler never asks for a retry: a second attempt means the process died mid-send.
+            # The site may have got it — don't send again, count it and let the user check.
+            app.status = ApplicationStatus.failed
+            app.reason = "отправка прервалась (перезапуск сервера?) — проверьте на сайте, ушёл ли отклик"
+            app.sent_at = app.sent_at or utcnow()
+            app.notified_at = None
+            return {"status": "interrupted"}
         cfg = get_config(s, ctx.user_id)
         vacancy = app.vacancy
         applier = applier_for(vacancy.source)
         req = ApplyRequest(user_id=ctx.user_id, source=vacancy.source, external_id=vacancy.external_id,
                            url=vacancy.url, letter=app.letter, site_resume_title=cfg.site_resume_title)
-        back = ApplicationStatus.approved if cfg.mode == "confirm" else ApplicationStatus.queued
         vacancy_id, attempts = app.vacancy_id, app.attempts
 
     if applier is None:
@@ -469,23 +508,22 @@ async def _send_job(ctx: JobContext) -> dict:
     if not req.letter:
         _finish(app_id, back, "", sent_at=None)  # the letter isn't written yet
         return {"status": "waiting"}
-    check = _precheck(ctx.user_id, vacancy_id)
-    if check == "wait":
-        _finish(app_id, back, "", sent_at=None)
-        return {"status": "waiting"}
-    if check == "cancel":
-        _finish(app_id, ApplicationStatus.cancelled, "вакансия уже разобрана в трекере", sent_at=None)
-        return {"status": "cancelled"}
-
-    try:
-        async with _BROWSER_LOCK:
+    async with _BROWSER_LOCK:
+        check = _precheck(ctx.user_id, vacancy_id, back)
+        if check == "wait":
+            _finish(app_id, back, "", sent_at=None)
+            return {"status": "waiting"}
+        if check == "cancel":
+            _finish(app_id, ApplicationStatus.cancelled, "вакансия уже разобрана в трекере", sent_at=None)
+            return {"status": "cancelled"}
+        try:
             result = await applier.apply(req)
-    except Exception:  # noqa: BLE001 - never leave the row in 'sending'
-        log.exception("applier crashed for application %s", app_id)
-        _finish(app_id, ApplicationStatus.failed, "внутренняя ошибка при отправке — проверьте на сайте, "
-                                                   "ушёл ли отклик", sent_at=utcnow())
-        _count_failure(ctx.user_id)
-        return {"status": "failed"}
+        except Exception:  # noqa: BLE001 - never leave the row in 'sending'
+            log.exception("applier crashed for application %s", app_id)
+            _finish(app_id, ApplicationStatus.failed, "внутренняя ошибка при отправке — проверьте на сайте, "
+                                                       "ушёл ли отклик", sent_at=utcnow())
+            _count_failure(ctx.user_id)
+            return {"status": "failed"}
 
     now = utcnow()
     if result.status == "applied":
@@ -531,6 +569,8 @@ def approve(s: Session, user_id: int, app_id: int) -> str:
     app = get_owned(s, user_id, app_id)
     if app.status not in (ApplicationStatus.queued, ApplicationStatus.review):
         return "Этот отклик уже не ждёт решения"
+    if not app.letter:
+        return "Письмо ещё пишется — подтвердите, когда оно появится"
     app.status = ApplicationStatus.approved
     app.reason = ""
     cfg = get_config(s, user_id)
@@ -552,8 +592,13 @@ def restore(s: Session, user_id: int, app_id: int) -> str:
     app = get_owned(s, user_id, app_id)
     if app.status != ApplicationStatus.cancelled:
         return "Этот отклик нельзя вернуть"
-    app.status = ApplicationStatus.queued
     app.notified_at = utcnow()  # the user is looking at it right now: don't ask again
+    resume = resume_svc.get_owned(s, user_id, app.resume_id) if app.resume_id else None
+    problems = letter_problems(app.letter, resume.text if resume else "") if app.letter else []
+    if problems:  # a suspicious letter never skips the review on its way back
+        app.status, app.reason = ApplicationStatus.review, "проверьте письмо: " + "; ".join(problems)
+        return "Вернул — сначала проверьте письмо"
+    app.status = ApplicationStatus.queued
     return "Вернул в очередь"
 
 
@@ -633,10 +678,15 @@ def _applier_or_404(site: str):
 
 
 def save_site_session(s: Session, user_id: int, site: str, data: bytes) -> bool:
-    """Store an uploaded login session. Returns True if this also lifted a pause (fresh login)."""
-    _applier_or_404(site).save_session_bytes(user_id, data)
+    """Store an uploaded login session. Returns True if this also lifted a pause (fresh login).
+
+    Only a pause caused by a missing/expired login is lifted: a captcha or failures pause
+    stays until the user presses «Продолжить»."""
+    applier = _applier_or_404(site)
+    was_ready = applier.is_ready(user_id)[0]
+    applier.save_session_bytes(user_id, data)
     cfg = get_config(s, user_id)
-    if cfg.enabled and cfg.paused_reason:
+    if cfg.enabled and cfg.paused_reason and not was_ready and applier.is_ready(user_id)[0]:
         resume_after_pause(s, user_id)
         return True
     return False

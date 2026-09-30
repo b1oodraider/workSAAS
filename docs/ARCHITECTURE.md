@@ -251,7 +251,7 @@ class Applier(ABC):
                             use_preferences=False); подозрительное письмо → статус review
                          ─► next_to_send(): режим, часы, лимиты, интервал с разбросом
                             → атомарный захват строки → job autoapply_send (одна на пользователя)
-job autoapply_send ─► перепроверка (пауза, часы, трекер) ─► Applier.apply (один браузер на процесс)
+job autoapply_send ─► перепроверка (пауза, часы, трекер) ─► Applier.apply (один отклик одновременно на весь сервер)
                    ─► applied: статус в трекере; blocked: пауза; failed ×N подряд: пауза
 ```
 

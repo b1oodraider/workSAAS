@@ -122,7 +122,7 @@
       </td>
       <td>{{ app_status[a.status.value] }}{% if a.reason %}<div class="muted">{{ a.reason }}</div>{% endif %}
         <div class="row">
-        {% if a.status.value == "review" or (a.status.value == "queued" and cfg.mode == "confirm") %}
+        {% if a.letter and (a.status.value == "review" or (a.status.value == "queued" and cfg.mode == "confirm")) %}
           <form method="post" action="/autoapply/{{ a.id }}/approve"><button class="btn-small">Откликнуться</button></form>
         {% endif %}
         {% if a.status.value in ("queued", "review", "approved") %}
