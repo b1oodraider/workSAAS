@@ -152,6 +152,41 @@ class TelegramSettings(BaseModel):
         return self.enabled and bool(self.bot_token)
 
 
+class HHApplySelectors(BaseModel):
+    """CSS selectors of hh.ru pages used by the browser applier.
+
+    Written from hh.ru's public markup (data-qa attributes) and NOT verified against the
+    live site from the development environment. If hh.ru changes its pages, fix them in
+    config.toml ([apply.hh_selectors]) without touching code. Each value may list several
+    selectors separated by commas (CSS "or").
+    """
+
+    response_button: str = '[data-qa="vacancy-response-link-top"], [data-qa="vacancy-response-link-bottom"]'
+    already_applied: str = '[data-qa="vacancy-response-link-view-topic"]'
+    relocation_confirm: str = '[data-qa="relocation-warning-confirm"]'
+    resume_option: str = '[data-qa="resume-title"]'
+    letter_toggle: str = '[data-qa="vacancy-response-letter-toggle"]'
+    letter_input: str = ('[data-qa="vacancy-response-popup-form-letter-input"], '
+                         'textarea[name="letter"]')
+    submit: str = '[data-qa="vacancy-response-submit-popup"]'
+    success: str = ('[data-qa="vacancy-response-success-standard-notification"], '
+                    '[data-qa="vacancy-response-link-view-topic"]')
+    login_form: str = '[data-qa="account-login-form"], [data-qa="login"]'
+
+
+class ApplySettings(BaseModel):
+    """Auto-apply guard rails. Users choose their own limits within these caps."""
+
+    enabled: bool = True
+    hard_daily_max: int = 30          # no user can go above this per day
+    min_interval_floor_s: int = 60    # and never faster than one application per this many seconds
+    max_consecutive_failures: int = 3  # then auto-apply pauses itself
+    headless: bool = True
+    # Optional path to a Chrome/Chromium binary instead of Playwright's bundled one.
+    browser_executable: str = ""
+    hh_selectors: HHApplySelectors = Field(default_factory=HHApplySelectors)
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="WS_",
@@ -184,6 +219,9 @@ class Settings(BaseSettings):
     matching: MatchingSettings = Field(default_factory=MatchingSettings)
     jobs: JobsSettings = Field(default_factory=JobsSettings)
     telegram: TelegramSettings = Field(default_factory=TelegramSettings)
+    apply: ApplySettings = Field(default_factory=ApplySettings)
+    # Where per-user files live (browser sessions for auto-apply, backups).
+    data_dir: str = "data"
 
     @classmethod
     def settings_customise_sources(

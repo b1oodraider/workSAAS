@@ -12,7 +12,7 @@ import pytest
 APP = Path(__file__).resolve().parent.parent / "app"
 
 LOW = ("app.core", "app.models")
-INFRA = ("app.llm", "app.sources", "app.jobs", "app.ranking", "app.documents")
+INFRA = ("app.llm", "app.sources", "app.jobs", "app.ranking", "app.documents", "app.apply")
 UPPER = ("app.services", "app.features", "app.web", "app.bot", "app.plugins", "app.main", "app.cli")
 
 # (module prefix, forbidden import prefixes, allowed exceptions)
@@ -24,11 +24,13 @@ RULES = [
     ("app.jobs", UPPER, ()),
     ("app.ranking", UPPER, ()),
     ("app.documents", UPPER, ()),
+    ("app.apply", UPPER, ()),
     ("app.features", ("app.services", "app.web", "app.bot"), ()),
     ("app.services", ("app.web", "app.bot"), ()),
     # Interfaces talk to services/jobs, not to LLM providers or source fetchers.
-    ("app.web", ("app.bot.runner", "app.bot.handlers", "app.llm.providers", "app.llm.gateway", "app.sources.web"), ()),
-    ("app.bot", ("app.web", "app.llm.providers", "app.llm.gateway", "app.sources"), ()),
+    ("app.web", ("app.bot.runner", "app.bot.handlers", "app.llm.providers", "app.llm.gateway", "app.sources.web",
+                 "app.apply.hh_browser"), ()),
+    ("app.bot", ("app.web", "app.llm.providers", "app.llm.gateway", "app.sources", "app.apply"), ()),
 ]
 
 

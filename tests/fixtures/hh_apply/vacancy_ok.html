@@ -1,0 +1,14 @@
+<!doctype html><html><body>
+<h1 data-qa="vacancy-title">Python developer</h1>
+<a data-qa="vacancy-response-link-top" href="#" onclick="document.getElementById('popup').style.display='block';return false">Откликнуться</a>
+<div id="popup" style="display:none">
+  <label><input type="radio" name="r"><span data-qa="resume-title">Java developer</span></label>
+  <label><input type="radio" name="r"><span data-qa="resume-title" onclick="window.chosen='python'">Python backend</span></label>
+  <button data-qa="vacancy-response-letter-toggle" onclick="document.getElementById('letter').style.display='block'">Сопроводительное письмо</button>
+  <textarea id="letter" data-qa="vacancy-response-popup-form-letter-input" style="display:none"></textarea>
+  <button data-qa="vacancy-response-submit-popup" onclick="
+    if (window.chosen !== 'python') return;
+    document.body.insertAdjacentHTML('beforeend', '<div data-qa=vacancy-response-success-standard-notification>'
+      + document.getElementById('letter').value.length + '</div>')">Откликнуться</button>
+</div>
+</body></html>
