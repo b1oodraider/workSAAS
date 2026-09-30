@@ -136,8 +136,35 @@ async def check_llm() -> list[Check]:
     return checks
 
 
+def check_autoapply() -> list[Check]:
+    """Who has auto-apply switched on, and can it actually send (browser, site login, pause)?"""
+    if not get_settings().apply.enabled:
+        return [Check("автоотклики", True, "выключены в [apply]")]
+    try:
+        from sqlalchemy import select
+
+        from app.core.db import session_scope
+        from app.models import AutoApplySettings, User
+        from app.services import autoapply as autoapply_svc
+
+        with session_scope() as s:
+            rows = s.execute(select(User.id, User.username).join(
+                AutoApplySettings, AutoApplySettings.user_id == User.id)
+                .where(AutoApplySettings.enabled.is_(True), User.is_active.is_(True))).all()
+            checks = []
+            for user_id, username in rows:
+                idle = autoapply_svc.idle_reason(s, user_id)
+                blocked = idle.startswith("на паузе") or not any(
+                    r["ok"] for r in autoapply_svc.site_readiness(user_id).values())
+                checks.append(Check(f"автоотклики {username}", not blocked, idle or "работают"))
+    except Exception as exc:  # noqa: BLE001 - no database yet etc.
+        return [Check("автоотклики", True, f"не проверены: {type(exc).__name__}")]
+    return checks or [Check("автоотклики", True, "ни у кого не включены")]
+
+
 async def run(*, llm: bool) -> list[Check]:
     checks = check_config()
+    checks += check_autoapply()
     checks += await check_telegram()
     checks += await check_sources()
     if llm:

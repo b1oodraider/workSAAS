@@ -801,3 +801,16 @@ async def test_bot_pause_resume_and_status(user_id, setup, applier):
     assert "На паузе" in await say("/autoapply")
     await _press(api, "ar:1")
     assert paused_reason(user_id) == ""
+
+
+def test_doctor_reports_autoapply_state(user_id, applier):
+    from app.doctor import check_autoapply
+
+    assert check_autoapply()[0].detail == "ни у кого не включены"
+    enable(user_id)
+    [check] = check_autoapply()
+    assert check.ok and check.name == "автоотклики alice"
+    with session_scope() as s:
+        autoapply.pause(s, user_id, "капча")
+    [check] = check_autoapply()
+    assert not check.ok and "капча" in check.detail
