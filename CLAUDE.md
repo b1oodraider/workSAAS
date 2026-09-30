@@ -1,5 +1,8 @@
 # Notes for coding agents
 
+**New session? Read `docs/HANDOFF.md` first** (owner's rules, current state, next steps) and
+`docs/LLM_PLANS.md` (chosen models and budget plans).
+
 Read `docs/ARCHITECTURE.md` before changing structure. Key rules:
 
 - New LLM feature = new folder `app/features/<kind>/` (`__init__.py`, `schema.py`, `system.j2`,
