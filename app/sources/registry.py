@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.core.config import SourceConfig, get_settings
 from app.sources.base import JobSource, SourceError
+from app.sources.foreign import ArbeitnowSource, HimalayasSource, JobicySource
 from app.sources.habr import HabrSource
 from app.sources.hh import HHSource
 from app.sources.manual import ManualSource
@@ -29,6 +30,9 @@ SOURCE_CLASSES: dict[str, type[JobSource]] = {
         RSSSource,
         RemotiveSource,
         RemoteOKSource,
+        HimalayasSource,
+        JobicySource,
+        ArbeitnowSource,
         ManualSource,
     )
 }

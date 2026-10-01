@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 from bs4 import BeautifulSoup
@@ -40,16 +40,21 @@ def find_job_posting(soup: BeautifulSoup) -> dict[str, Any] | None:
     return None
 
 
+def _naive_utc(dt: datetime) -> datetime:
+    """The DB stores naive UTC: convert an aware time instead of dropping its offset."""
+    return dt.astimezone(UTC).replace(tzinfo=None) if dt.tzinfo else dt
+
+
 def parse_date(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+        return _naive_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError:
         pass
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"):
         try:
-            return datetime.strptime(value, fmt).replace(tzinfo=None)
+            return _naive_utc(datetime.strptime(value, fmt))
         except ValueError:
             continue
     return None
