@@ -1,0 +1,46 @@
+name: deploy
+
+# Every push to main: tests, then deploy to the server over SSH. The deploy key can only run
+# scripts/deploy.sh there (forced command), which updates the code, migrates, restarts and rolls back
+# if the app doesn't come up. Secrets: DEPLOY_HOST, DEPLOY_KEY, DEPLOY_KNOWN_HOSTS (see README «CD»).
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[dev]"
+      - run: ruff check app tests
+      - run: pytest -q
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          KEY: ${{ secrets.DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$HOST" ] || [ -z "$KEY" ] || [ -z "$KNOWN_HOSTS" ]; then
+            echo "Deploy secrets are not set — skipping deploy."
+            exit 0
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              "worksaas@$HOST" "$GITHUB_SHA"
