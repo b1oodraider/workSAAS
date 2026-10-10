@@ -15,7 +15,7 @@ from app.llm.gateway import LLMGateway, set_gateway  # noqa: E402
 from app.llm.providers.fake import FakeProvider  # noqa: E402
 from app.models import User  # noqa: E402
 from app.plugins import load_all  # noqa: E402
-from app.sources.web import response_cache  # noqa: E402
+from app.sources.web import breaker, response_cache  # noqa: E402
 
 load_all()
 
@@ -37,6 +37,10 @@ def env(tmp_path):
     settings.telegram.bot_token = None  # never talk to the real Telegram from tests
     set_api(None)
     response_cache.clear()
+    breaker.clear()  # a host "blocked" by one test must not leak into the next
+    from app.web.routes.auth import throttle
+
+    throttle.clear()  # login failures are counted process-wide
     init_engine(f"sqlite:///{tmp_path / 'test.db'}")
     create_all()
     FakeProvider.canned.clear()

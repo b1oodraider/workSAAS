@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import io
+import zipfile
 from pathlib import PurePath
 
 
 MAX_PDF_PAGES = 15
+MAX_DOCX_UNPACKED = 50 * 1024 * 1024
 
 
 class ExtractError(Exception):
@@ -48,6 +50,13 @@ def _pdf(data: bytes) -> str:
 def _docx(data: bytes) -> str:
     from docx import Document
 
+    try:
+        with zipfile.ZipFile(io.BytesIO(data)) as zf:
+            unpacked = sum(info.file_size for info in zf.infolist())
+    except zipfile.BadZipFile as exc:
+        raise ExtractError("Не удалось прочитать DOCX: файл повреждён") from exc
+    if unpacked > MAX_DOCX_UNPACKED:  # zip bomb: python-docx would inflate it all into memory
+        raise ExtractError("DOCX слишком большой после распаковки — сохраните резюме в PDF или TXT")
     try:
         doc = Document(io.BytesIO(data))
     except Exception as exc:  # noqa: BLE001

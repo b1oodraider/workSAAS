@@ -104,6 +104,7 @@ async def test_cover_letter_uses_previous_match(user_id, resume_id):
 
 async def test_search_pipeline(user_id, resume_id, stub_source, env):
     FakeProvider.canned["resume_profile"] = PROFILE
+    FakeProvider.canned["match_quick"] = {"summary": "подходит", "score": 80, "verdict": "good"}
     env.matching.prefilter_min = 10
     with session_scope() as s:
         search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["stub"],
@@ -135,6 +136,50 @@ async def test_search_pipeline(user_id, resume_id, stub_source, env):
     await drain()
     with session_scope() as s:
         assert len(s.scalars(select(Analysis).where(Analysis.kind == "match")).all()) == 1
+        assert len(s.scalars(select(Analysis).where(Analysis.kind == "match_quick")).all()) == 1
+
+
+async def test_low_quick_score_skips_full_match(user_id, resume_id, stub_source, env):
+    FakeProvider.canned["resume_profile"] = PROFILE
+    FakeProvider.canned["match_quick"] = {"summary": "другой стек", "score": 30, "verdict": "weak"}
+    env.matching.prefilter_min = 10
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["stub"],
+                                      queries=["python"], filters={}).id
+    search_svc.enqueue_search_run(search_id, user_id)
+    await drain()
+    with session_scope() as s:
+        assert s.scalars(select(Analysis).where(Analysis.kind == "match")).all() == []
+        [item] = [it for it in search_svc.results(s, user_id, search_id) if it["match"]]
+        assert item["match"].kind == "match_quick" and item["match"].score == 30
+    calls = len(FakeProvider.calls)
+    search_svc.enqueue_search_run(search_id, user_id)  # a low quick score is not paid for again
+    await drain()
+    assert [c.task for c in FakeProvider.calls[calls:]] == []
+
+
+async def test_triage_retry_does_not_repay_quick_score(user_id, resume_id, env, monkeypatch):
+    from app.llm.base import LLMUnavailable
+
+    with session_scope() as s:
+        vacancy_id = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+
+    FakeProvider.canned["match_quick"] = {"summary": "подходит", "score": 90, "verdict": "strong"}
+    real = analysis_svc.run_analysis
+    fail = {"match": 1}
+
+    async def flaky(user_id, kind, **kw):
+        if fail.get(kind):
+            fail[kind] -= 1
+            raise LLMUnavailable("429")
+        return await real(user_id, kind, **kw)
+
+    monkeypatch.setattr(search_svc.analysis_svc, "run_analysis", flaky)
+    search_svc.enqueue_triage(user_id, resume_id, vacancy_id)
+    await drain()
+    with session_scope() as s:
+        kinds = [a.kind for a in s.scalars(select(Analysis).order_by(Analysis.id))]
+    assert kinds == ["match_quick", "match"]
 
 
 def test_web_flow(user_id, env):
@@ -207,6 +252,76 @@ async def test_scheduler_enqueues_due_searches_once(user_id, resume_id, stub_sou
     assert enqueue_due_searches() == []  # ran just now, not due for an hour
 
 
+class OverflowSource(JobSource):
+    """One row the DB rejects (model_copy skips the draft's salary check) among good ones."""
+
+    name = "stub"
+    title = "Stub"
+
+    async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]:
+        good = VacancyDraft(source="stub", external_id="1", title="Python-разработчик",
+                            description="Python, FastAPI", remote=True)
+        bad = VacancyDraft(source="stub", external_id="2", title="Python-разработчик в банк",
+                           description="Python").model_copy(update={"salary_from": 10**20})
+        other = VacancyDraft(source="stub", external_id="3", title="Бариста", description="Кофе")
+        return [good, bad, other]
+
+
+async def test_search_run_skips_a_row_the_db_rejects(user_id, resume_id, env, monkeypatch):
+    from app.core.config import SourceConfig
+    from app.models import Vacancy
+
+    monkeypatch.setitem(registry.SOURCE_CLASSES, "stub", OverflowSource)
+    monkeypatch.setitem(env.sources, "stub", SourceConfig())
+    FakeProvider.canned["resume_profile"] = PROFILE
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["stub"],
+                                      queries=["python"], filters={}).id
+
+    result = await search_svc.run_search(user_id, search_id)
+
+    assert result["unique"] == 2 and result["new"] == 2
+    # The bad row comes once per query: skipped each time, never failing the run.
+    assert any(e.startswith("Пропущено вакансий с некорректными данными") for e in result["errors"]), result["errors"]
+    with session_scope() as s:  # the good rows around the bad one are stored and attached
+        assert sorted(s.scalars(select(Vacancy.external_id))) == ["1", "3"]
+        assert len(s.scalars(select(UserVacancy)).all()) == 2
+
+
+async def test_results_defer_heavy_vacancy_columns(user_id, resume_id, stub_source, env):
+    from sqlalchemy import inspect
+
+    FakeProvider.canned["resume_profile"] = PROFILE
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["stub"],
+                                      queries=["python"], filters={}).id
+    await search_svc.run_search(user_id, search_id)
+    with session_scope() as s:
+        items = search_svc.results(s, user_id, search_id)
+        assert len(items) == 3
+        assert all({"description", "raw"} <= inspect(it["vacancy"]).unloaded for it in items)
+        assert all(not {"title", "company", "salary_from"} & inspect(it["vacancy"]).unloaded for it in items)
+        python = next(it for it in items if it["vacancy"].title == "Python-разработчик")
+        assert items[0] is python  # best keyword score first
+        assert "FastAPI" in python["vacancy"].description  # still loads on access
+
+
+def test_results_sort_by_blended_score(user_id, resume_id, env):
+    from app.models import Vacancy
+
+    env.llm.embeddings.weight = 0.5
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["manual"],
+                                      queries=[], filters={}).id
+        for ext, kw, sem in (("a", 60, None), ("b", 40, 90), ("c", 70, 10)):
+            v = Vacancy(source="manual", external_id=ext, title=ext)
+            s.add(v)
+            s.flush()
+            vacancy_svc.attach(s, user_id, v.id, search_id=search_id, prefilter_score=kw).semantic_score = sem
+    with session_scope() as s:  # b: 65, a: 60 (keywords only), c: 40
+        assert [it["vacancy"].title for it in search_svc.results(s, user_id, search_id)] == ["b", "a", "c"]
+
+
 def test_dedup_key_normalisation():
     k = vacancy_svc.make_dedup_key
     assert k("ООО «Ромашка»", "Python-разработчик (Middle)") == k("Ромашка", "Python разработчик")
@@ -243,13 +358,13 @@ def test_login_is_throttled(user_id):
     from app.main import create_app
     from app.web.routes.auth import throttle
 
-    throttle._failures.clear()
+    throttle.clear()
     with TestClient(create_app(start_background=False)) as client:
         for _ in range(5):
             client.post("/login", data={"username": "alice", "password": "bad"})
         r = client.post("/login", data={"username": "alice", "password": "password123"})
         assert "Слишком много попыток" in r.text
-    throttle._failures.clear()
+    throttle.clear()
 
 
 async def test_required_params_and_letter_critic_fallback(user_id, resume_id):
@@ -313,3 +428,146 @@ async def test_match_of_another_resume_is_not_borrowed(user_id, resume_id):
     await analysis_svc.run_analysis(user_id, "match", resume_id=other, vacancy_id=vacancy_id)
     await analysis_svc.run_analysis(user_id, "tailor_resume", resume_id=resume_id, vacancy_id=vacancy_id)
     assert "ФАКТ ИЗ ДРУГОГО РЕЗЮМЕ" not in FakeProvider.calls[-1].user
+
+
+async def test_url_import_connects_to_the_checked_ip(monkeypatch):
+    """DNS rebinding: the request must go to the IP that passed the check, not a fresh lookup."""
+    import asyncio
+
+    import httpx
+
+    from app.services import vacancies as vs
+
+    answers = iter(["93.184.216.34", "169.254.169.254"])
+
+    async def getaddrinfo(host, port):
+        return [(None, None, None, None, (next(answers), 0))]
+
+    monkeypatch.setattr(asyncio.get_running_loop(), "getaddrinfo", getaddrinfo)
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.host, request.headers["host"], request.extensions.get("sni_hostname")))
+        return httpx.Response(200, html="<html><title>Python dev</title><body>Вакансия</body></html>")
+
+    real = httpx.AsyncClient
+    monkeypatch.setattr(vs, "make_async_client", lambda **kw: real(transport=httpx.MockTransport(handler)))
+    await vs._fetch_public_page("https://jobs.example.com/v/1")
+    assert seen == [("93.184.216.34", "jobs.example.com", "jobs.example.com")]
+
+
+def _search_with(user_id, resume_id, drafts):
+    with session_scope() as s:
+        search = search_svc.create(s, user_id, resume_id=resume_id, name="Python", sources=["stub"],
+                                   queries=[], filters={})
+        ids = []
+        for d in drafts:
+            v, _ = vacancy_svc.upsert(s, d)
+            vacancy_svc.attach(s, user_id, v.id, search_id=search.id)
+            ids.append(v.id)
+        return search.id, ids
+
+
+def test_hide_with_reason_tunes_the_search(user_id, resume_id, stub_source):
+    from app.ranking.prefilter import KeywordRanker, RankInput, RankProfile
+    from app.sources.base import SearchFilters
+
+    sid, (acme1, acme2, senior, cheap) = _search_with(user_id, resume_id, [
+        VacancyDraft(source="stub", external_id="1", title="Python dev", company="Acme", description="x"),
+        VacancyDraft(source="stub", external_id="2", title="Backend dev", company="ACME", description="x"),
+        VacancyDraft(source="stub", external_id="3", title="Senior Python developer", company="B", description="x"),
+        VacancyDraft(source="stub", external_id="4", title="Python dev", company="C", description="x",
+                     salary_to=120_000, currency="RUR"),
+    ])
+    with session_scope() as s:
+        assert "скрыто ещё 1" in search_svc.hide_with_reason(s, user_id, acme1, "company")
+        assert "«senior»" in search_svc.hide_with_reason(s, user_id, senior, "level")
+        search_svc.hide_with_reason(s, user_id, cheap, "salary")
+        f = SearchFilters.model_validate(s.get(SavedSearch, sid).filters)
+        statuses = {uv.vacancy_id: uv.status.value for uv in s.scalars(select(UserVacancy))}
+    assert statuses[acme2] == "hidden"
+    assert f.exclude_companies == ["Acme"] and f.exclude_title_words == ["senior"] and f.salary_min == 120_001
+    r = KeywordRanker()
+    assert r.score(RankProfile(), RankInput("Python dev", "", company="acme"), f).excluded
+    assert r.score(RankProfile(), RankInput("Senior Python", "", company="D"), f).excluded
+    # "senior" in the description (not the title) must not exclude a middle vacancy
+    assert not r.score(RankProfile(), RankInput("Python dev", "работа с senior-коллегами", company="D"), f).excluded
+
+    with session_scope() as s:
+        search_svc.remove_exclusion(s, user_id, sid, "exclude_companies", "Acme")
+        assert SearchFilters.model_validate(s.get(SavedSearch, sid).filters).exclude_companies == []
+
+
+def test_hide_routes_check_ownership(user_id, resume_id, stub_source):
+    from app.main import create_app
+
+    sid, (vid,) = _search_with(user_id, resume_id, [
+        VacancyDraft(source="stub", external_id="1", title="Python dev", company="Acme", description="x")])
+    with session_scope() as s:
+        from app.core.security import hash_password
+        from app.models import User
+
+        s.add(User(username="bob", password_hash=hash_password("password123")))
+    with TestClient(create_app(start_background=False)) as client:
+        client.post("/login", data={"username": "bob", "password": "password123"})
+        assert client.post(f"/vacancies/{vid}/hide", data={"reason": "company"}).status_code == 404
+        assert client.post(f"/searches/{sid}/exclusions/remove",
+                           data={"kind": "remote_only"}).status_code == 404
+    with session_scope() as s:
+        assert s.get(SavedSearch, sid).filters["exclude_companies"] == []
+
+
+def test_hide_company_with_cyrillic_name_and_applied_stays(user_id, resume_id, stub_source):
+    sid, (a, b, applied) = _search_with(user_id, resume_id, [
+        VacancyDraft(source="stub", external_id="1", title="Python dev", company="Яндекс", description="x"),
+        VacancyDraft(source="stub", external_id="2", title="Go dev", company="ЯНДЕКС", description="x"),
+        VacancyDraft(source="stub", external_id="3", title="Senior Go", company="B", description="x"),
+    ])
+    with session_scope() as s:
+        vacancy_svc.set_status(s, user_id, applied, "applied")
+        assert "скрыто ещё 1" in search_svc.hide_with_reason(s, user_id, a, "company")
+        msg = search_svc.hide_with_reason(s, user_id, applied, "level")
+        st = {uv.vacancy_id: uv.status.value for uv in s.scalars(select(UserVacancy))}
+    assert st[b] == "hidden"
+    assert st[applied] == "applied" and "не менялся" in msg  # the filter changes, the application stays
+
+
+def test_hide_with_bad_word_changes_nothing(user_id, resume_id, stub_source):
+    from app.services.errors import ValidationFailed
+
+    sid, (vid,) = _search_with(user_id, resume_id, [
+        VacancyDraft(source="stub", external_id="1", title="Python dev", company="A", description="x")])
+    with session_scope() as s, pytest.raises(ValidationFailed):
+        search_svc.hide_with_reason(s, user_id, vid, "word", " ")
+    with session_scope() as s:
+        assert s.scalar(select(UserVacancy)).status.value == "new"
+
+
+async def test_triage_skips_vacancies_no_longer_open(user_id, resume_id, env):
+    with session_scope() as s:
+        vid = vacancy_svc.create_manual(s, user_id, title="Python dev", text=VACANCY_TEXT).id
+    search_svc.enqueue_triage(user_id, resume_id, vid)
+    with session_scope() as s:
+        vacancy_svc.set_status(s, user_id, vid, "hidden")
+    calls = len(FakeProvider.calls)
+    await drain()
+    assert len(FakeProvider.calls) == calls
+
+
+async def test_changed_criteria_rescore_vacancies(user_id, resume_id, stub_source, env):
+    from app.services import criteria as criteria_svc
+
+    FakeProvider.canned["resume_profile"] = PROFILE
+    FakeProvider.canned["match_quick"] = {"summary": "другой стек", "score": 30}
+    env.matching.prefilter_min = 10
+    with session_scope() as s:
+        search_id = search_svc.create(s, user_id, resume_id=resume_id, name="", sources=["stub"],
+                                      queries=["python"], filters={}).id
+    search_svc.enqueue_search_run(search_id, user_id)
+    await drain()
+    with session_scope() as s:
+        criteria_svc.save(s, user_id, resume_id, {"adjacent_roles": False})
+    calls = len(FakeProvider.calls)
+    search_svc.enqueue_search_run(search_id, user_id)
+    await drain()
+    assert "match_quick" in [c.task for c in FakeProvider.calls[calls:]]  # old score is stale

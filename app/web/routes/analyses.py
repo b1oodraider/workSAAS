@@ -45,7 +45,7 @@ async def start(request: Request, user: CurrentUser = Depends(current_user)):
 
 @router.get("/{analysis_id}")
 def detail(analysis_id: int, request: Request, user: CurrentUser = Depends(current_user),
-           s: Session = Depends(db)):
+           s: Session = Depends(db, scope="function")):
     a = analysis_svc.get_owned(s, user.id, analysis_id)
     return render(
         request, "analyses/detail.html", a=a, feature=FEATURES.get(a.kind),

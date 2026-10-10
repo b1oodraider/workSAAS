@@ -1,0 +1,83 @@
+{
+ "page": 1,
+ "nextpage": 0,
+ "pagecount": 1,
+ "documentsCount": 3,
+ "data": [
+  {
+   "position": "Python Developer",
+   "salary": "",
+   "country": "",
+   "city": "",
+   "jobFormat": {
+    "remote": true,
+    "relocate": false,
+    "parttime": false,
+    "inhouse": false
+   },
+   "log": {
+    "modify": "24 сентября",
+    "archived": null
+   },
+   "company": {
+    "type": "1",
+    "name": "Aya Games",
+    "logo": "250819161745.png",
+    "id": "67b2d229e3ed057e3904c683"
+   },
+   "id": "6ab4ca3a5a37344b7508650d",
+   "sortOrder": "20260924",
+   "weight": 10.350506756756758
+  },
+  {
+   "position": "Applied AI / LLM Engineer (Python)",
+   "salary": "2.3K — 2.8K ₽",
+   "country": "Кыргызстан",
+   "city": "Бишкек",
+   "jobFormat": {
+    "remote": true,
+    "relocate": false,
+    "parttime": false,
+    "inhouse": false
+   },
+   "log": {
+    "modify": "5 октября",
+    "archived": null
+   },
+   "company": {
+    "type": 1,
+    "name": "Mad Devs",
+    "logo": "251009134726.png",
+    "id": "61a9f70e62fff7307031ea33"
+   },
+   "id": "6ac37fb023481b12a406c4a5",
+   "sortOrder": "20261005",
+   "weight": 8.264018691588785
+  },
+  {
+   "position": "Senior QA (full-stack)",
+   "salary": "",
+   "country": "Россия",
+   "city": "Москва",
+   "jobFormat": {
+    "remote": false,
+    "relocate": false,
+    "parttime": false,
+    "inhouse": true
+   },
+   "log": {
+    "modify": "7 октября",
+    "archived": null
+   },
+   "company": {
+    "type": "2",
+    "name": "BrainShels",
+    "logo": null,
+    "id": "6346eefccaf57c69a706e4e2"
+   },
+   "id": "6ac614a70e7ce911650091be",
+   "sortOrder": "20261007",
+   "weight": 2.6477601156069364
+  }
+ ]
+}

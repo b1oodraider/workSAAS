@@ -1,0 +1,44 @@
+{
+ "_comment": "SYNTHETIC sample written from https://developer.adzuna.com/docs/search (no API key was available to fetch a real response).",
+ "__CLASS__": "Adzuna::API::Response::JobSearchResults",
+ "count": 3,
+ "mean": 61234.5,
+ "results": [
+  {
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "id": "4931520873",
+   "adref": "eyJhbGciOiJIUzI1NiJ9.example",
+   "title": "Senior <strong>Python</strong> Developer - Remote",
+   "description": "We are looking for a Senior <strong>Python</strong> Developer to join our platform team. You will build APIs with FastAPI and PostgreSQL &amp; mentor others…",
+   "redirect_url": "https://www.adzuna.co.uk/jobs/land/ad/4931520873?se=abc&utm_medium=api&utm_source=12345678&v=DEF",
+   "created": "2026-10-05T09:12:44Z",
+   "company": {"__CLASS__": "Adzuna::API::Response::Company", "display_name": "Acme Data Ltd"},
+   "location": {"__CLASS__": "Adzuna::API::Response::Location", "display_name": "London, UK", "area": ["UK", "London"]},
+   "category": {"__CLASS__": "Adzuna::API::Response::Category", "tag": "it-jobs", "label": "IT Jobs"},
+   "salary_min": 70000,
+   "salary_max": 85000.5,
+   "salary_is_predicted": "0",
+   "contract_time": "full_time",
+   "contract_type": "permanent",
+   "latitude": 51.5074,
+   "longitude": -0.1278
+  },
+  {
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "id": "4931520999",
+   "title": "Data Engineer",
+   "description": "Build data pipelines in Python and Spark for a fintech in Manchester…",
+   "redirect_url": "https://www.adzuna.co.uk/jobs/details/4931520999",
+   "created": "2026-10-03T16:40:00Z",
+   "company": {"__CLASS__": "Adzuna::API::Response::Company", "display_name": "Northern Fintech"},
+   "location": {"__CLASS__": "Adzuna::API::Response::Location", "display_name": "Manchester, Greater Manchester", "area": ["UK", "North West England", "Greater Manchester", "Manchester"]},
+   "category": {"__CLASS__": "Adzuna::API::Response::Category", "tag": "it-jobs", "label": "IT Jobs"},
+   "contract_time": "part_time"
+  },
+  {
+   "__CLASS__": "Adzuna::API::Response::Job",
+   "id": "",
+   "title": "Broken item without id"
+  }
+ ]
+}

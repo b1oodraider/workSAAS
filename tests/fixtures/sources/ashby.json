@@ -1,0 +1,311 @@
+{
+ "apiVersion": "1",
+ "jobs": [
+  {
+   "id": "7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+   "title": "Engineering Manager - EU",
+   "department": "Engineering",
+   "team": "EMEA Engineering",
+   "employmentType": "FullTime",
+   "location": "Remote - European Union",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [
+    {
+     "location": "Spain",
+     "address": {
+      "postalAddress": {
+       "addressRegion": "Spain",
+       "addressCountry": "Spain",
+       "addressLocality": "Spain"
+      }
+     }
+    },
+    {
+     "location": "Italy",
+     "address": {
+      "postalAddress": {
+       "addressRegion": "",
+       "addressCountry": "Italy",
+       "addressLocality": ""
+      }
+     }
+    }
+   ],
+   "publishedAt": "2024-03-04T14:29:08.532+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Remote",
+   "address": {
+    "postalAddress": {
+     "postalCode": "",
+     "addressRegion": "",
+     "addressCountry": "European Union",
+     "addressLocality": ""
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/ashby/7458d4e9-da2e-47bd-98cb-adfda43d42b2",
+   "applyUrl": "https://jobs.ashbyhq.com/ashby/7458d4e9-da2e-47bd-98cb-adfda43d42b2/application",
+   "descriptionHtml": "<p style=\"min-height:1.5em\">Hi 👋 I’m <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://uk.linkedin.com/in/colinhoweuk\"><u>Colin</u></a>, Director of Engineering, Europe. How do you feel about software engineers writing product specs, making product decisions, and not breaking down projects into individual tickets? If that sounds exciting (even if a bit scary), read on because I’m looking for an engineering manager to help us build a different type of engineering team and culture at Ashby.</p><p style=\"min-height:1.5em\">To start, why do we need to be different? Time and again,",
+   "descriptionPlain": "Hi 👋 I’m Colin https://uk.linkedin.com/in/colinhoweuk, Director of Engineering, Europe. How do you feel about software engineers writing product specs, making product decisions, and not breaking down projects into individual tickets? If that sounds exciting (even if a bit scary), read on because I’m looking for an engineering manager to help us build a different type of engineering team and culture at Ashby.\n\nTo start, why do we need to be different? Time and again, I have witnessed engineers kn",
+   "compensation": {
+    "compensationTierSummary": "€110K – €185K • Offers Equity • Offers Bonus",
+    "scrapeableCompensationSalarySummary": "€110K - €185K",
+    "compensationTiers": [
+     {
+      "id": "f1284fac-20e9-4ed0-9a10-776d526a636c",
+      "tierSummary": "€110K – €185K • Offers Equity • Offers Bonus",
+      "title": "EU",
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "04679796-e0e4-4d9b-a5c0-0cad3ff8ae95",
+        "summary": "Offers Bonus",
+        "compensationType": "Bonus",
+        "interval": "1 YEAR",
+        "currencyCode": "EUR",
+        "minValue": null,
+        "maxValue": null
+       },
+       {
+        "id": "da741ab6-ff38-4fc2-b7b7-c1ccd7260347",
+        "summary": "Offers Equity",
+        "compensationType": "EquityPercentage",
+        "interval": "NONE",
+        "currencyCode": null,
+        "minValue": null,
+        "maxValue": null
+       },
+       {
+        "id": "201b8495-aa7c-417d-923b-94fced49b246",
+        "summary": "€110K – €185K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "EUR",
+        "minValue": 110000,
+        "maxValue": 185000
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "Bonus",
+      "interval": "1 YEAR",
+      "currencyCode": "EUR",
+      "minValue": null,
+      "maxValue": null
+     },
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": null
+     },
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "EUR",
+      "minValue": 110000,
+      "maxValue": 185000
+     }
+    ]
+   }
+  },
+  {
+   "id": "d573471b-2005-482c-9fbf-d1df9550cb57",
+   "title": "Engineering Manager - UK",
+   "department": "Engineering",
+   "team": "EMEA Engineering",
+   "employmentType": "FullTime",
+   "location": "United Kingdom",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [
+    {
+     "location": "Cardiff",
+     "address": {
+      "postalAddress": {
+       "addressRegion": "",
+       "addressCountry": "United Kingdom",
+       "addressLocality": "Cardiff"
+      }
+     }
+    },
+    {
+     "location": "Birmingham",
+     "address": {
+      "postalAddress": {
+       "addressRegion": "",
+       "addressCountry": "United Kingdom",
+       "addressLocality": "Birmingham"
+      }
+     }
+    }
+   ],
+   "publishedAt": "2025-04-01T14:39:51.428+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Remote",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "",
+     "addressCountry": "United Kingdom",
+     "addressLocality": ""
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/ashby/d573471b-2005-482c-9fbf-d1df9550cb57",
+   "applyUrl": "https://jobs.ashbyhq.com/ashby/d573471b-2005-482c-9fbf-d1df9550cb57/application",
+   "descriptionHtml": "<p style=\"min-height:1.5em\">Hi 👋 I’m <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://uk.linkedin.com/in/colinhoweuk\"><u>Colin</u></a>, Director of Engineering, Europe. How do you feel about software engineers writing product specs, making product decisions, and not breaking down projects into individual tickets? If that sounds exciting (even if a bit scary), read on because I’m looking for an engineering manager to help us build a different type of engineering team and culture at Ashby.</p><p style=\"min-height:1.5em\">To start, why do we need to be different? Time and again,",
+   "descriptionPlain": "Hi 👋 I’m Colin https://uk.linkedin.com/in/colinhoweuk, Director of Engineering, Europe. How do you feel about software engineers writing product specs, making product decisions, and not breaking down projects into individual tickets? If that sounds exciting (even if a bit scary), read on because I’m looking for an engineering manager to help us build a different type of engineering team and culture at Ashby.\n\nTo start, why do we need to be different? Time and again, I have witnessed engineers kn",
+   "compensation": {
+    "compensationTierSummary": "£110K – £200K",
+    "scrapeableCompensationSalarySummary": "£110K - £200K",
+    "compensationTiers": [
+     {
+      "id": "e4d74e59-a5e9-4d24-b85f-6c40b5fa4674",
+      "tierSummary": "£110K – £200K",
+      "title": "UK",
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "e3e53638-aaf2-4502-b2ba-65d60cd01694",
+        "summary": "£110K – £200K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "GBP",
+        "minValue": 110000,
+        "maxValue": 200000
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": 0.16
+     },
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "GBP",
+      "minValue": 110000,
+      "maxValue": 200000
+     }
+    ]
+   }
+  },
+  {
+   "id": "5ccfc540-35d4-4fc8-aeb6-7f11b2ad8258",
+   "title": "Engineering Manager - Canada",
+   "department": "Engineering",
+   "team": "Americas Engineering",
+   "employmentType": "FullTime",
+   "location": "Remote - Canada",
+   "shouldDisplayCompensationOnJobPostings": true,
+   "secondaryLocations": [
+    {
+     "location": "Calgary",
+     "address": {
+      "postalAddress": {
+       "addressRegion": "Alberta",
+       "addressCountry": "Canada",
+       "addressLocality": "Calgary"
+      }
+     }
+    },
+    {
+     "location": "Vancouver",
+     "address": {
+      "postalAddress": {
+       "addressRegion": "British Columbia",
+       "addressCountry": "Canada",
+       "addressLocality": "Vancouver"
+      }
+     }
+    }
+   ],
+   "publishedAt": "2025-11-13T23:05:17.459+00:00",
+   "isListed": true,
+   "isRemote": true,
+   "workplaceType": "Remote",
+   "address": {
+    "postalAddress": {
+     "addressRegion": "",
+     "addressCountry": "Canada",
+     "addressLocality": ""
+    }
+   },
+   "jobUrl": "https://jobs.ashbyhq.com/ashby/5ccfc540-35d4-4fc8-aeb6-7f11b2ad8258",
+   "applyUrl": "https://jobs.ashbyhq.com/ashby/5ccfc540-35d4-4fc8-aeb6-7f11b2ad8258/application",
+   "descriptionHtml": "<p style=\"min-height:1.5em\">Hi 👋🏾, I’m <a target=\"_blank\" rel=\"noopener noreferrer nofollow\" href=\"https://www.linkedin.com/in/abhikpramanik/\"><u>Abhik</u></a>, Ashby’s Co-Founder and VP of Engineering. We’re looking for a great (former) engineer who built impressive products and now builds teams of great engineers. Ashby’s success and ambition mean we’re doubling the Engineering team in the next year, and we need your experience and leadership to do it thoughtfully.</p><p style=\"min-height:1.5em\">Our product and growth are exceptional. Ashby All-in-One is powerful, easy to use, and replaces s",
+   "descriptionPlain": "Hi 👋🏾, I’m Abhik https://www.linkedin.com/in/abhikpramanik/, Ashby’s Co-Founder and VP of Engineering. We’re looking for a great (former) engineer who built impressive products and now builds teams of great engineers. Ashby’s success and ambition mean we’re doubling the Engineering team in the next year, and we need your experience and leadership to do it thoughtfully.\n\nOur product and growth are exceptional. Ashby All-in-One is powerful, easy to use, and replaces several venture-backed companie",
+   "compensation": {
+    "compensationTierSummary": "CA$190K – CA$280K • Offers Equity • Offers Bonus",
+    "scrapeableCompensationSalarySummary": "CA$190K - CA$280K",
+    "compensationTiers": [
+     {
+      "id": "2668e196-2947-41a3-acce-a8f2c6e9498e",
+      "tierSummary": "CA$190K – CA$280K • Offers Equity • Offers Bonus",
+      "title": "Canada",
+      "additionalInformation": null,
+      "components": [
+       {
+        "id": "dd57f7e2-7cc9-48f4-aaf3-95639e41d553",
+        "summary": "Offers Bonus",
+        "compensationType": "Bonus",
+        "interval": "1 YEAR",
+        "currencyCode": "CAD",
+        "minValue": null,
+        "maxValue": null
+       },
+       {
+        "id": "e0bb016f-4d88-40f2-8f27-e11eecd37390",
+        "summary": "CA$190K – CA$280K",
+        "compensationType": "Salary",
+        "interval": "1 YEAR",
+        "currencyCode": "CAD",
+        "minValue": 190000,
+        "maxValue": 280000
+       },
+       {
+        "id": "00840df4-d677-41f1-9272-d91407f92c8b",
+        "summary": "Offers Equity",
+        "compensationType": "EquityPercentage",
+        "interval": "NONE",
+        "currencyCode": null,
+        "minValue": null,
+        "maxValue": null
+       }
+      ]
+     }
+    ],
+    "summaryComponents": [
+     {
+      "compensationType": "Bonus",
+      "interval": "1 YEAR",
+      "currencyCode": "CAD",
+      "minValue": null,
+      "maxValue": null
+     },
+     {
+      "compensationType": "Salary",
+      "interval": "1 YEAR",
+      "currencyCode": "CAD",
+      "minValue": 190000,
+      "maxValue": 280000
+     },
+     {
+      "compensationType": "EquityPercentage",
+      "interval": "NONE",
+      "currencyCode": null,
+      "minValue": null,
+      "maxValue": null
+     }
+    ]
+   }
+  }
+ ]
+}

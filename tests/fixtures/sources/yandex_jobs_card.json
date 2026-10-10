@@ -1,0 +1,100 @@
+{
+ "id": 15322,
+ "form_url": "https://forms.yandex.ru/surveys/13806547.42a3303548f45eda01508546034dbfe952322554?publication_id=15322",
+ "publication_slug_url": "multitrack-_-noviy-format-nayma-dlya-opitnih-bekenderov-15322",
+ "status": "published",
+ "vacancy": {
+  "id": 394841,
+  "cities": [
+   {
+    "id": 1,
+    "slug": "moscow",
+    "name": "Москва"
+   },
+   {
+    "id": 2,
+    "slug": "saint-petersburg",
+    "name": "Санкт-Петербург"
+   }
+  ],
+  "skills": [
+   {
+    "id": 34,
+    "name": "Python"
+   },
+   {
+    "id": 62,
+    "name": "C++"
+   },
+   {
+    "id": 64,
+    "name": "Java"
+   },
+   {
+    "id": 74,
+    "name": "Go"
+   }
+  ],
+  "work_modes": [
+   {
+    "id": 3,
+    "slug": "mixed",
+    "name": "Гибридный"
+   }
+  ],
+  "pro_level_min_display": "publications.pro_level.senior",
+  "pro_level_max_display": "publications.pro_level.senior",
+  "profession": {
+   "id": 1,
+   "slug": "backend-developer",
+   "name": "Разработчик бэкенда",
+   "professional_sphere": {
+    "id": 1,
+    "slug": "Development",
+    "name": "Разработка"
+   }
+  },
+  "public_professions": [
+   {
+    "id": 7,
+    "slug": "backend-developer",
+    "name": "Бэкенд-разработчик",
+    "professional_sphere": {
+     "id": 1,
+     "slug": "Development",
+     "name": "Разработка"
+    }
+   }
+  ],
+  "employment_types": [
+   "office"
+  ]
+ },
+ "published_at": "2026-02-11",
+ "modified": "2026-10-07T10:57:39.254033Z",
+ "public_service": {
+  "id": 98,
+  "icon": "https://jobs.s3.yandex.net/public_services/ya.svg_bc201ebdf8654e4082e1e2b446684d0c",
+  "slug": "yandex",
+  "is_active": true,
+  "name": "Общие сервисы Яндекса",
+  "description": "Здесь размещаются все вакансии Яндекса без категоризации",
+  "group": null
+ },
+ "lang": "ru",
+ "title": "MultiTrack — новый формат найма для опытных бэкендеров",
+ "short_summary": "В течение 2–3 месяцев вы сможете поработать в трёх командах Яндекса и выбрать ту, в которой захотите остаться. Ждём опытных разработчиков на Java, Python, Go или C++.",
+ "key_qualifications": "* Уверенно владеете Java, Python, Go или C++\r\n* Разрабатывали коммерческие приложения не менее 7 лет\r\n* Поддерживали программное обеспечение от написания до выкладки в продакшен\r\n* Качественно тестируете свой код и свободно работаете с чужим\r\n* Умеете мониторить работу готового ПО и оперативно реагировать на проблемы\r\n* Занимались многопоточным программированием\r\n* Разбираетесь в классических алгоритмах и структурах данных\r\n* Обладаете широким техническим кругозором",
+ "additional_requirements": "* Проектировали архитектуру и разрабатывали продуктовые фичи\r\n* Занимались разработкой для Unix/Linux и сетевым программированием\r\n* Понимаете основы TCP/IP и HTTP\r\n* Понимаете принципы работы СУБД",
+ "duties": "",
+ "conditions": "",
+ "description": "От небольшого стартапа до известного сервиса: посмотрите, как работают в разных командах Яндекса.\r\n\r\nМы запускаем MultiTrack — новый формат найма для опытных бэкендеров. Программа длится 2–3 месяца: за это время мы предлагаем поработать в трёх командах Яндекса, познакомиться с нашими разработчиками и технологиями.\r\n\r\n<b>Вот как это выглядит:</b>\r\n\r\n* Вы проходите собеседования, заключаете трудовой договор.\r\n* Среди всех открытых вакансий выбираете 3 самых интересных вам команды.\r\n* В первой команде мы предлагаем поработать 4 недели, в остальных — по 3 недели.\r\n* По итогам работы вы сможете обм",
+ "our_team": "",
+ "tech_stack": "",
+ "og_image": "https://jobs.s3.yandex.net/publications/og_image_d902685f1fd9445c95e0cbf54f7c4bd7",
+ "redirect_url": null,
+ "version": 0,
+ "benefits_type": "missing",
+ "show_benefits": false,
+ "show_space_link": false
+}

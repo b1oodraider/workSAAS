@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
+from app.core.security import session_stamp
 from app.services import admin as admin_svc
 from app.services.errors import ValidationFailed
 from app.web.deps import CurrentUser, current_user, db
@@ -29,7 +30,7 @@ def _budget(value: str) -> float | None:
 
 
 @router.get("")
-def page(request: Request, admin: CurrentUser = Depends(require_admin), s: Session = Depends(db)):
+def page(request: Request, admin: CurrentUser = Depends(require_admin), s: Session = Depends(db, scope="function")):
     sources, runs = admin_svc.sources_health(s)
     return render(request, "admin.html", users=admin_svc.users_overview(s), sources=sources, runs=runs,
                   llm=admin_svc.llm_health(s), new_password=request.session.pop("new_password", None))
@@ -38,7 +39,7 @@ def page(request: Request, admin: CurrentUser = Depends(require_admin), s: Sessi
 @router.post("/users")
 def create_user(request: Request, username: str = Form(...), password: str = Form(""),
                 budget: str = Form(""), is_admin: bool = Form(False),
-                admin: CurrentUser = Depends(require_admin), s: Session = Depends(db)):
+                admin: CurrentUser = Depends(require_admin), s: Session = Depends(db, scope="function")):
     try:
         user, pw = admin_svc.create_user(s, username, password=password, is_admin=is_admin, budget=_budget(budget))
         # Shown once on the next page load; never logged.
@@ -50,7 +51,7 @@ def create_user(request: Request, username: str = Form(...), password: str = For
 
 @router.post("/users/{user_id}")
 def update_user(user_id: int, request: Request, action: str = Form(...), budget: str = Form(""),
-                admin: CurrentUser = Depends(require_admin), s: Session = Depends(db)):
+                admin: CurrentUser = Depends(require_admin), s: Session = Depends(db, scope="function")):
     try:
         if action == "budget":
             admin_svc.set_budget(s, user_id, _budget(budget))
@@ -62,7 +63,10 @@ def update_user(user_id: int, request: Request, action: str = Form(...), budget:
             pw = admin_svc.reset_password(s, user_id)
             from app.models import User
 
-            request.session["new_password"] = {"username": s.get(User, user_id).username, "password": pw}
+            target = s.get(User, user_id)
+            request.session["new_password"] = {"username": target.username, "password": pw}
+            if user_id == admin.id:  # keep the admin's own session valid after the hash change
+                request.session["pw"] = session_stamp(target.password_hash)
     except ValidationFailed as exc:
         flash(request, str(exc), "error")
     return RedirectResponse("/admin", status_code=303)

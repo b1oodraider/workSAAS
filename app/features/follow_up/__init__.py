@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.features import register
-from app.features._shared import pair_context
+from app.features._shared import LONG_TEXT_MAX, pair_context
 from app.features.base import AnalysisFeature, feature_dir
 from app.features.follow_up.schema import FollowUp
 from app.llm.tasks import LLMTask
@@ -14,7 +14,7 @@ class Params(BaseModel):
         "no_reply", title="Ситуация", json_schema_extra={"labels": {
             "no_reply": "нет ответа на отклик", "after_interview": "после собеседования",
             "after_test_task": "после тестового", "after_rejection": "после отказа"}})
-    details: str = Field("", title="Подробности (с кем общались, что обсуждали)",
+    details: str = Field("", title="Подробности (с кем общались, что обсуждали)", max_length=LONG_TEXT_MAX,
                          json_schema_extra={"widget": "textarea"})
 
 
@@ -28,6 +28,7 @@ FEATURE = register(
                      template_dir=feature_dir(__file__), max_tokens=6000),
         params_model=Params,
         context_builder=lambda s, uid, r, v, p: pair_context(s, uid, r, v, "match"),
+        employer_facing=True,
         order=60,
         group="more",
     )

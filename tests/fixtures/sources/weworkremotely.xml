@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='utf-8'?>
+<rss xmlns:media="http://search.yahoo.com/mrss" version="2.0">
+  <channel>
+    <title>We Work Remotely: Remote jobs in design, programming, marketing and more</title>
+    <link>https://weworkremotely.com/categories/remote-programming-jobs.rss</link>
+    <description>We Work Remotely: Remote jobs in design, programming, marketing and more</description>
+    <language>en-US</language>
+    <ttl>60</ttl>
+    <item>
+      <title>Dremio: Senior Staff Software Engineer - Query Execution</title>
+      <region>Anywhere in the World</region>
+      <category>Full-Stack Programming</category>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Portugal - Remote
+&lt;/p&gt;
+
+&lt;div class="content-intro"&gt;&lt;h2&gt;&lt;strong&gt;Be Part of Building the Future&lt;/strong&gt;&lt;/h2&gt;
+&lt;p&gt;Dremio is the unified lakehouse platform for self-service analytics and AI, serving hundreds of global enterprises, including Maersk, Amazon, Regeneron, NetApp, and S&amp;amp;P Global. Customers rely on Dremio for cloud, hybrid, and on-prem lakehouses to power their data mesh, data warehouse migration, data virtualization, and unified data access use cases. Based on open source technologies, including Apache Iceberg and Apache Arrow, Dremio provides an open lakehouse architecture enabling the fastest time to insight and platform flexibility at a fr</description>
+      <pubDate>Mon, 28 Sep 2026 07:31:05 +0000</pubDate>
+      <guid>https://weworkremotely.com/remote-jobs/dremio-senior-staff-software-engineer-query-execution</guid>
+      <link>https://weworkremotely.com/remote-jobs/dremio-senior-staff-software-engineer-query-execution</link>
+    </item>
+    <item>
+      <media:content url="https://wwr-pro.s3.amazonaws.com/logos/0074/7274/logo.gif" type="image/png" />
+      <title>Toggl: Senior Full Stack</title>
+      <region>Anywhere in the World</region>
+      <category>Full-Stack Programming</category>
+      <description>&lt;img src="https://we-work-remotely.imgix.net/logos/0074/7274/logo.gif?ixlib=rails-4.0.0&amp;w=50&amp;h=50&amp;dpr=2&amp;fit=fill&amp;auto=compress" /&gt;
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; Tallinn, Estonia
+    &lt;br /&gt;&lt;strong&gt;URL:&lt;/strong&gt; &lt;a href="https://toggl.com/jobs/"&gt;https://toggl.com/jobs/&lt;/a&gt;
+&lt;/p&gt;
+
+&lt;div class="_descriptionText_5yu8i_201 ashby-job-posting-description"&gt;
+&lt;p&gt;We are looking for a Senior Full Stack Engineer to join one of our Product Tribes, the cross-functional units that own the end-to-end experience for a specific Toggl user role. You'll join the Tribe building for managers, the people who plan work, protect margins, and keep projects on time and on budget.&lt;/p&gt;
+&lt;p&gt;You own significant parts o</description>
+      <pubDate>Fri, 28 Aug 2026 14:51:27 +0000</pubDate>
+      <guid>https://weworkremotely.com/remote-jobs/toggl-senior-full-stack</guid>
+      <link>https://weworkremotely.com/remote-jobs/toggl-senior-full-stack</link>
+    </item>
+    <item>
+      <title>Toptal: Salesforce Platform Lead for Global Industrial Company</title>
+      <region>North America Only</region>
+      <category>Full-Stack Programming</category>
+      <description>
+
+&lt;p&gt;
+  &lt;strong&gt;Headquarters:&lt;/strong&gt; 
+&lt;/p&gt;
+
+&lt;p&gt;We are looking for a Salesforce Platform Lead for a global company. Their goal is to own the Salesforce platform as a product, improving release health, security, engineering standards, reusable patterns, and AI-assisted delivery.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;General Information&lt;/strong&gt;&lt;/p&gt;&lt;p&gt;Location: Remote. Talents from the USA or Canada.&lt;/p&gt;&lt;p&gt;&lt;strong&gt;French/English bilingual candidates are preferred&lt;/strong&gt; for the Montreal hub.&lt;/p&gt;&lt;p&gt;Overlap: 6hs with East Coast time zone, USA&lt;/p&gt;&lt;p&gt;Commitment: full-time&lt;/p&gt;&lt;p&gt;Length: 12+ month&lt;/p&gt;&lt;p&gt;&lt;strong&gt;Required Skills:&lt;/strong&gt;&lt;/p&gt;&lt;ul&gt;&lt;li&gt;6–10 years of Salesforce administration and development experience with p</description>
+      <pubDate>Thu, 24 Sep 2026 14:45:20 +0000</pubDate>
+      <guid>https://weworkremotely.com/remote-jobs/toptal-salesforce-platform-lead-for-global-industrial-company</guid>
+      <link>https://weworkremotely.com/remote-jobs/toptal-salesforce-platform-lead-for-global-industrial-company</link>
+    </item>
+    </channel>
+</rss>

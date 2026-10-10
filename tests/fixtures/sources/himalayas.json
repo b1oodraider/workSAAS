@@ -1,0 +1,167 @@
+{
+ "comments": "21/08/2026: Cursor pagination is now available and is the preferred way to page through the feed. Pass the nextCursor value from each response back as ?cursor=. It is faster than offset and will never return the same job twice. The offset parameter is deprecated and will be removed in a future release. 13/03/2026: The API has been updated to include the companySlug field in the response.",
+ "updatedAt": 1791345070,
+ "offset": 0,
+ "limit": 20,
+ "totalCount": 3697,
+ "jobs": [
+  {
+   "title": "Software Engineer",
+   "excerpt": "About UsElitevoraSys is a modern engineering consultancy focused on building high-performance operational platforms, automation pipelines, and data-driven workflows for clients who need real results - not just software.",
+   "companyName": "ElitevoraSys LLC",
+   "companySlug": "elitevorasys-llc",
+   "companyLogo": "https://cdn-images.himalayas.app/3pc0s39uob814yxkuwy550qy0jk9",
+   "employmentType": "Full Time",
+   "minSalary": 160000,
+   "maxSalary": 240000,
+   "salaryPeriod": "annual",
+   "seniority": [
+    "Senior"
+   ],
+   "currency": "USD",
+   "locationRestrictions": [
+    "United States"
+   ],
+   "timezoneRestrictions": [
+    -11,
+    -10,
+    -9.5,
+    -9,
+    -8,
+    -7,
+    -6,
+    -5,
+    -4,
+    -3.5,
+    -3,
+    -2,
+    -1,
+    0,
+    1,
+    2,
+    3,
+    3.5,
+    4,
+    4.5,
+    5,
+    5.5,
+    5.75,
+    6,
+    6.5,
+    7,
+    8,
+    8.75,
+    9,
+    9.5,
+    10,
+    10.5,
+    11,
+    12,
+    12.75,
+    13,
+    14
+   ],
+   "categories": [
+    "Software-Engineer",
+    "Software-Engineer-Developer",
+    "Software-Developer",
+    "IT-Software-Engineer",
+    "Software-Engineer-Jobs",
+    "Engineering-Software-Developer",
+    "Software-Systems-Engineer",
+    "Software-Engineering-Jobs",
+    "Software-Design-Engineer"
+   ],
+   "parentCategories": [
+    "Developer"
+   ],
+   "description": "<h3><strong>About Us</strong></h3><p>ElitevoraSys is a modern engineering consultancy focused on building high-performance operational platforms, automation pipelines, and data-driven workflows for clients who need real results - not just software.</p><p>We partner with organizations to design and deliver systems that streamline dispatch, asset management, field operations, and enterprise integrations.</p><h3><strong>Job Description</strong></h3><p>This is a remote position.</p><p><strong>Team:</strong> Engineering – Platform Consulting</p><h3><strong>About ElitevoraSys</strong></h3><p>ElitevoraSys is a modern engineering consultancy focused on building high-performance operational platforms, automation pipelines, and data-driven workflows for clients who need real results - not just software. We partner with organizations to design and deliver systems that streamline dispatch, asset management, field operations, and enterprise integrations. Our work blends clean architecture, practica",
+   "pubDate": 1789962228,
+   "expiryDate": 1792249223,
+   "applicationLink": "https://himalayas.app/companies/elitevorasys-llc/jobs/software-engineer",
+   "guid": "https://himalayas.app/companies/elitevorasys-llc/jobs/software-engineer"
+  },
+  {
+   "title": "Remote - Middle to Senior Python Developer - (Sports Team)",
+   "excerpt": "Welcome to Torrero - all-in-one source for cutting-edge white label casino, sportsbook solutions and B2B aggregation.",
+   "companyName": "Torrero",
+   "companySlug": "torrero",
+   "companyLogo": "https://cdn-images.himalayas.app/vuap0y7r2ugqocrit8rzql74lbhg",
+   "employmentType": "Contractor",
+   "minSalary": null,
+   "maxSalary": null,
+   "salaryPeriod": "annual",
+   "seniority": [
+    "Senior"
+   ],
+   "currency": null,
+   "locationRestrictions": [
+    "Serbia"
+   ],
+   "timezoneRestrictions": [
+    1
+   ],
+   "categories": [
+    "Python-Developer",
+    "Backend-Engineer",
+    "Software-Developer",
+    "Django-Developer",
+    "Senior-Python-Backend-Developer",
+    "Senior-Backend-Python-Developer",
+    "Senior-Python-Developer-(South-America)",
+    "Senior-Python-Software-Engineer"
+   ],
+   "parentCategories": [
+    "Developer"
+   ],
+   "description": "<p>Welcome to <a href=\"https://himalayas.app/companies/torrero\">Torrero</a> - all-in-one source for cutting-edge white label casino, sportsbook solutions and B2B aggregation. Built on a foundation of trust and compliance, we proudly offer an extensive library of 30,000+ games sourced from diverse providers, positioning <a href=\"https://himalayas.app/companies/torrero\">Torrero</a> as the preferred partner for transforming the iGaming enterprise. With huge number of sports events and easy payment options, we cater to diverse interests. Available in 35+ languages, we make gaming accessible worldwide. </p><p>If you like a fast paced, dynamic and start-up work culture with full of passionate and enthusiastic mindsets, you’re most welcome to explore the opportunity. This is a chance to take part in an exciting journey as the company grows and expands its business at a rapid pace.</p><p>About the project</p><p>We're looking for a senior Python Developer.</p><p>Our tech stacks are Python, Djan",
+   "pubDate": 1790524672,
+   "expiryDate": 1795708672,
+   "applicationLink": "https://himalayas.app/companies/torrero/jobs/remote-middle-to-senior-python-developer-sports-team",
+   "guid": "https://himalayas.app/companies/torrero/jobs/remote-middle-to-senior-python-developer-sports-team"
+  },
+  {
+   "title": "Lead Python Developer",
+   "excerpt": "Job Title:Lead Developer – Python /FastAPI/ Databricks Experience:7+ yearsRole Focus:Full-stack development, technical design, Python,FastAPI, Databricks Apps Job SummaryWe are looking for a Lead Developer with strong full-stack experience in Python-based application development.",
+   "companyName": "Ness USA, Inc.",
+   "companySlug": "ness-usa-inc",
+   "companyLogo": "https://cdn-images.himalayas.app/iaz1qc2i8ddxebev2g57j54syz47",
+   "employmentType": "Full Time",
+   "minSalary": 2500000,
+   "maxSalary": 4500000,
+   "salaryPeriod": "annual",
+   "seniority": [
+    "Senior"
+   ],
+   "currency": "INR",
+   "locationRestrictions": [
+    "India"
+   ],
+   "timezoneRestrictions": [
+    5.5
+   ],
+   "categories": [
+    "Lead-Python-Developer",
+    "Python-Developer",
+    "Backend-Engineer",
+    "Full-Stack-Developer",
+    "Software-Engineer",
+    "Lead-Software-Engineer-Python",
+    "Python-Tech-Lead",
+    "Principal-Python-Developer",
+    "Python-Team-Lead",
+    "Python-Development-Team-Leader",
+    "Principal-Software-Developer-Python",
+    "Senior-Python-Engineer"
+   ],
+   "parentCategories": [
+    "Developer"
+   ],
+   "description": "<div><div>\n<p>Job Title:Lead Developer – Python /FastAPI/ Databricks</p>\n<h3>Experience:7+ years</h3>\n<p>Role Focus:Full-stack development, technical design, Python,FastAPI, Databricks Apps</p>\n<h3>Job Summary</h3>\n<p>We are looking for a Lead Developer with strong full-stack experience in Python-based application development. The Lead Developer will translate the high-level architecture provided by the Solution Architect into detailed technical designs and working application components.</p>\n<h3>Key Responsibilities</h3>\n<ul>\n<li>Convert high-level architecture and modules from the Architect into detailed technical designs.</li>\n<li>Lead development of Python-based applications.</li>\n<li>Design and develop applications usingFastAPIand Python.</li>\n<li>Build and integrate applications deployed throughDatabricks Apps.</li>\n<li>Develop components across the full application stack:<ul>\n<li>UI layer</li>\n<li>Application/integration layer</li>\n<li>Database layer</li>\n</ul>\n</li>\n<li>Build s",
+   "pubDate": 1790843720,
+   "expiryDate": 1796027719,
+   "applicationLink": "https://himalayas.app/companies/ness-usa-inc/jobs/lead-python-developer",
+   "guid": "https://himalayas.app/companies/ness-usa-inc/jobs/lead-python-developer"
+  }
+ ]
+}

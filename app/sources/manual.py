@@ -9,6 +9,8 @@ class ManualSource(JobSource):
     name = "manual"
     title = "Вручную"
     searchable = False
+    # Pasted text and arbitrary imported pages: never the shared canonical copy.
+    trusted = False
 
     async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]:
         return []

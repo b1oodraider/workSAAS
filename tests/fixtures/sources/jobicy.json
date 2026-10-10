@@ -1,0 +1,78 @@
+{
+ "apiVersion": "2.2.19",
+ "documentationUrl": "https://jobi.cy/apidocs",
+ "friendlyNotice": "Thanks for using Jobicy API! Please ensure Jobicy is clearly credited with a direct link to the source, and all application buttons redirect to the original job URL provided in this feed. That’s all! You might be building something amazing, we wish you the best of luck!",
+ "jobCount": 3,
+ "lastUpdate": "2026-10-07T13:00:13+00:00",
+ "nextCursor": "AgAAAABqxrEUAAAAAGrDNfsAAAAAAAJbrgLdYReLMIlnNcHnEovfWMhi-qEnddl3ku86rH8wP7EO7mYNTAgUGh14IIf-vfSGKzDvOFIQDosinqZyS-JjkUI",
+ "hasMore": true,
+ "appliedFilters": {
+  "count": 50,
+  "tag": "python"
+ },
+ "jobs": [
+  {
+   "id": 154780,
+   "url": "https://jobicy.com/jobs/154780-senior-software-engineer-fullstack-4",
+   "jobSlug": "154780-senior-software-engineer-fullstack-4",
+   "jobTitle": "Senior Software Engineer, Fullstack",
+   "companyName": "CoderPad",
+   "companyLogo": "https://jobicy.com/data/server-nyc0409/galaxy/mercury/2022/02/57995875e79f20bb0cd2cadad1b52775.jpeg",
+   "jobIndustry": [
+    "Software Engineering"
+   ],
+   "jobType": [
+    "Contract"
+   ],
+   "jobGeo": "LATAM",
+   "jobLevel": "Senior",
+   "jobExcerpt": "Role Summary We are hiring a Senior Software Engineer to help build the future of technical interviewing and assessment across CoderPad. This is a fullstack role for someone who can move across backend services, frontend product surfaces, and AI-powered system design. You will work on user-facing features, production infrastructure, and internal engineering workflows where coding&hellip;",
+   "jobDescription": "<h3>Role Summary</h3>\n<p>We are hiring a Senior Software Engineer to help build the future of technical interviewing and assessment across <a href=\"https://jobicy.com/company/coderpad\" target=\"_blank\" rel=\"noopener\">CoderPad</a>. </p>\n<p>This is a fullstack role for someone who can move across backend services, frontend product surfaces, and AI-powered system design. You will work on user-facing features, production infrastructure, and internal engineering workflows where coding agents and AI-assisted development are part of normal day-to-day execution.</p>\n<p>This role is remote from Latin America.</p>\n<h3>What You Will Work On</h3>\n<ul>\n<li>Build and ship fullstack product features across candidate and recruiter experiences, from API and data model design to frontend implementation.</li>\n<li>Improve real-time AI-powered experiences used in interviews and assessments, including model orchestration, streaming UX, tool/function-calling patterns, and reliability.</li>\n<li>Contribute to s",
+   "pubDate": "2026-10-07T13:00:13+00:00"
+  },
+  {
+   "id": 152668,
+   "url": "https://jobicy.com/jobs/152668-security-sales-engineer-sled-public-sector",
+   "jobSlug": "152668-security-sales-engineer-sled-public-sector",
+   "jobTitle": "Security Sales Engineer - SLED/Public Sector",
+   "companyName": "Tenable",
+   "companyLogo": "https://jobicy.com/data/server-nyc0409/galaxy/mercury/2025/06/01879e02-221.jpg",
+   "jobIndustry": [
+    "Cybersecurity"
+   ],
+   "jobType": [
+    "Full-Time"
+   ],
+   "jobGeo": "USA",
+   "jobLevel": "Director",
+   "jobExcerpt": "Who is Tenable? Tenable® is the Exposure Management company. Over 40,000 organizations around the globe rely on Tenable to understand and reduce cyber risk. Our global employees support 65 percent of the Fortune 500, 50 percent of the Global 2000, and large government agencies. Come be part of our journey! What makes Tenable such a&hellip;",
+   "jobDescription": "<p><strong>Who is <a href=\"https://jobicy.com/company/tenable\" target=\"_blank\" rel=\"noopener\">Tenable</a>?</strong></p>\n<p>Tenable® is the Exposure Management company. Over 40,000 organizations around the globe rely on Tenable to understand and reduce cyber risk. Our global employees support 65 percent of the Fortune 500, 50 percent of the Global 2000, and large government agencies. Come be part of our journey!</p>\n<p><strong>What makes Tenable such a great place to work?</strong></p>\n<p>Ask a member of our team and they’ll answer, “Our people!” We work together to build and innovate best-in-class cybersecurity solutions for our customers; all while creating a culture of belonging, respect, and excellence where we can be our best selves. When you’re part of our #OneTenable team, you can expect to partner with some of the most talented and passionate people in the industry, and have the support and resources you need to do work that truly matters. We deliver results that exceed expectat",
+   "pubDate": "2026-10-07T05:10:11+00:00",
+   "salaryMin": 114500,
+   "salaryMax": 152500,
+   "salaryCurrency": "USD",
+   "salaryPeriod": "yearly"
+  },
+  {
+   "id": 143728,
+   "url": "https://jobicy.com/jobs/143728-workflow-developer-tester",
+   "jobSlug": "143728-workflow-developer-tester",
+   "jobTitle": "Workflow Developer & Tester",
+   "companyName": "Webbing",
+   "companyLogo": "https://jobicy.com/data/server-nyc0409/galaxy/mercury/2025/08/0a1bcd0e-221.png",
+   "jobIndustry": [
+    "Software Engineering"
+   ],
+   "jobType": [
+    "Full-Time"
+   ],
+   "jobGeo": "Romania",
+   "jobLevel": "Senior",
+   "jobExcerpt": "DescriptionImplement Temporal workflow activities in Go: HSS adapter, PCRF adapter, Inventory update.Build and validate unit tests for all workflow activities from day one.Build the Inventory Management Database: tables, indexes, partitioning for 30M records.Build bulk import tooling: CSV → ICCID/IMSI/MSISDN range ingestion from vendor.Implement REST API endpoints for Inventory DB (allocate, reserve, release, query SIM records).Write&hellip;",
+   "jobDescription": "<h2>Description</h2><ul><li>Implement Temporal workflow activities in Go: HSS adapter, PCRF adapter, Inventory update.</li><li>Build and validate unit tests for all workflow activities from day one.</li><li>Build the Inventory Management Database: tables, indexes, partitioning for 30M records.</li><li>Build bulk import tooling: CSV → ICCID/IMSI/MSISDN range ingestion from vendor.</li><li>Implement REST API endpoints for Inventory DB (allocate, reserve, release, query SIM records).</li><li>Write integration tests: workflow → mock NE → database assertions.</li><li>Support Sr. Developer on all workflow development tasks — pair programming expected.</li><li>End-to-end test suite: full provisioning flow from SIM activation to order closed.</li><li>Load and stress testing: simulate peak TPS provisioning against all systems.</li><li>Test automation: CI pipeline integration for all workflow and API tests.</li><li>HSS sync integration: IMSI allocation state reflected in HSS (mock → real NE).</l",
+   "pubDate": "2026-10-07T04:20:10+00:00"
+  }
+ ],
+ "statusCode": 200,
+ "success": true
+}

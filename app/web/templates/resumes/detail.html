@@ -30,6 +30,49 @@
     </form>
   </div>
 </div>
+<div class="card" id="criteria">
+  <h2>Условия поиска</h2>
+  <p class="muted">То, чего обычно нет в резюме, но без чего подбор неточен. Минимальная зарплата, «только удалёнка»
+    и отрасли «точно нет» отсекают вакансии сразу, остальное учитывает ИИ при оценке.</p>
+  {% if crit_missing %}<div class="hint"><b>Уточните, чтобы поиск был точнее:</b>
+    <ul>{% for q in crit_missing[:5] %}<li>{{ q }}</li>{% endfor %}</ul></div>{% endif %}
+  <details {% if crit_missing|length > 6 %}open{% endif %}><summary>Заполнить / изменить</summary>
+  <form method="post" action="/resumes/{{ resume.id }}/criteria">
+    <div class="row">
+      <label>Минимум, который реально готовы рассмотреть <input type="text" inputmode="numeric" name="salary_min" value="{{ crit.salary_min or '' }}" placeholder="например, 250000"></label>
+      <label>Желаемая <input type="text" inputmode="numeric" name="salary_desired" value="{{ crit.salary_desired or '' }}"></label>
+      <label>Валюта <select name="salary_currency">{% for c in ["RUB", "USD", "EUR", "KZT", "GBP"] %}<option {% if crit.salary_currency == c %}selected{% endif %}>{{ c }}</option>{% endfor %}</select></label>
+    </div>
+    <label><input type="checkbox" name="salary_net" {% if crit.salary_net %}checked{% endif %}> суммы «на руки» (после налогов), в месяц</label>
+    {% macro checks(field, values) %}<div class="row">{% for k, label in crit_labels[field].items() %}
+      <label><input type="checkbox" name="{{ field }}" value="{{ k }}" {% if k in values %}checked{% endif %}> {{ label }}</label>{% endfor %}</div>{% endmacro %}
+    <fieldset><legend>Формат работы</legend>{{ checks("work_formats", crit.work_formats) }}</fieldset>
+    <fieldset><legend>Уровень, на который претендуете</legend>{{ checks("grades", crit.grades) }}</fieldset>
+    <label><input type="checkbox" name="stretch_up" {% if crit.stretch_up %}checked{% endif %}> рассматривать вакансии на ступень выше (например, «3+ года» при 2 годах), если навыки хорошо совпадают</label>
+    <label><input type="checkbox" name="adjacent_roles" {% if crit.adjacent_roles %}checked{% endif %}> искать и смежные роли с теми же навыками</label>
+    <label>Ещё роли, которые интересны (через запятую) <input type="text" name="roles_extra" value="{{ crit.roles_extra|join(', ') }}" placeholder="Data Engineer, MLOps"></label>
+    <label>Страны, по приоритету <input type="text" name="countries" value="{{ crit.countries|join(', ') }}" placeholder="Россия, Казахстан, Германия"></label>
+    <label>Города <input type="text" name="cities" value="{{ crit.cities|join(', ') }}"></label>
+    <label>Переезд <select name="relocation">{% for k, label in crit_labels.relocation.items() %}<option value="{{ k }}" {% if crit.relocation == k %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Часовой пояс и допустимое смещение <input type="text" name="timezone" value="{{ crit.timezone }}" placeholder="UTC+3, ±3 часа"></label>
+    <div class="row">
+      <label>Гражданство <input type="text" name="citizenship" value="{{ crit.citizenship }}"></label>
+      <label>Разрешения на работу (через запятую) <input type="text" name="work_permits" value="{{ crit.work_permits|join(', ') }}" placeholder="ЕС Blue Card"></label>
+    </div>
+    <label>Языки и уровень (через запятую) <input type="text" name="languages" value="{{ crit.languages|join(', ') }}" placeholder="английский B2, немецкий A2"></label>
+    <fieldset><legend>Занятость</legend>{{ checks("employment", crit.employment) }}</fieldset>
+    <fieldset><legend>Как можете оформиться</legend>{{ checks("contracts", crit.contracts) }}</fieldset>
+    <div class="row">
+      <label>Интересные отрасли <input type="text" name="industries_prefer" value="{{ crit.industries_prefer|join(', ') }}" placeholder="финтех, e-commerce"></label>
+      <label>Отрасли — точно нет (вакансии с этими словами отсеются) <input type="text" name="industries_avoid" value="{{ crit.industries_avoid|join(', ') }}" placeholder="гемблинг, 1С"></label>
+    </div>
+    <label>Когда готовы выйти <input type="text" name="start" value="{{ crit.start }}" placeholder="через 2 недели"></label>
+    <label>Обязательно <textarea name="must_have" rows="2" placeholder="белая зарплата, ДМС, оплата конференций">{{ crit.must_have }}</textarea></label>
+    <label>Точно нет <textarea name="deal_breakers" rows="2" placeholder="овертаймы, только офис 5/2">{{ crit.deal_breakers }}</textarea></label>
+    <p><button class="btn-small">Сохранить условия</button></p>
+  </form>
+  </details>
+</div>
 <h2>Результаты</h2>
 {% for a in analyses %}{{ analysis_card(a, FEATURES.get(a.kind)) }}{% else %}<p class="muted">Пока ничего не запускали.</p>{% endfor %}
 {% endblock %}

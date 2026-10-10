@@ -1,0 +1,129 @@
+{
+ "count": 241,
+ "next": "http://be.publication-service.yandex-team.ru/_api/jobs/publications/?page_size=3&text=python&cursor=cD0wJnQ9MjAyNi0xMC0wNSZpPTQ5MTc5JnI9MCZrPTAuMjczNTY3Mg",
+ "results": [
+  {
+   "id": 15322,
+   "publication_slug_url": "multitrack-_-noviy-format-nayma-dlya-opitnih-bekenderov-15322",
+   "status": "published",
+   "vacancy": {
+    "id": 394841,
+    "cities": [
+     {
+      "id": 1,
+      "slug": "moscow",
+      "name": "Москва"
+     },
+     {
+      "id": 2,
+      "slug": "saint-petersburg",
+      "name": "Санкт-Петербург"
+     }
+    ],
+    "skills": [
+     {
+      "id": 34,
+      "name": "Python"
+     },
+     {
+      "id": 62,
+      "name": "C++"
+     },
+     {
+      "id": 64,
+      "name": "Java"
+     },
+     {
+      "id": 74,
+      "name": "Go"
+     }
+    ],
+    "work_modes": [
+     {
+      "id": 3,
+      "slug": "mixed",
+      "name": "Гибридный"
+     }
+    ]
+   },
+   "public_service": {
+    "id": 98,
+    "icon": "https://jobs.s3.yandex.net/public_services/ya.svg_bc201ebdf8654e4082e1e2b446684d0c",
+    "slug": "yandex",
+    "is_active": true,
+    "name": "Общие сервисы Яндекса",
+    "description": "Здесь размещаются все вакансии Яндекса без категоризации",
+    "group": null
+   },
+   "is_chief": false,
+   "redirect_url": null,
+   "version": 0,
+   "lang": "ru",
+   "title": "MultiTrack — новый формат найма для опытных бэкендеров",
+   "short_summary": "В течение 2–3 месяцев вы сможете поработать в трёх командах Яндекса и выбрать ту, в которой захотите остаться. Ждём опытных разработчиков на Java, Python, Go или C++.",
+   "modified": "2026-10-07T10:57:39.254033Z"
+  },
+  {
+   "id": 37135,
+   "publication_slug_url": "razrabotchik-na-python-i-go-v-yandeks-id-37135",
+   "status": "published",
+   "vacancy": {
+    "id": 1046353,
+    "cities": [
+     {
+      "id": 1,
+      "slug": "moscow",
+      "name": "Москва"
+     },
+     {
+      "id": 2,
+      "slug": "saint-petersburg",
+      "name": "Санкт-Петербург"
+     }
+    ],
+    "skills": [
+     {
+      "id": 34,
+      "name": "Python"
+     },
+     {
+      "id": 74,
+      "name": "Go"
+     }
+    ],
+    "work_modes": [
+     {
+      "id": 2,
+      "slug": "office",
+      "name": "Офис"
+     },
+     {
+      "id": 3,
+      "slug": "mixed",
+      "name": "Гибридный"
+     }
+    ]
+   },
+   "public_service": {
+    "id": 209,
+    "icon": "https://jobs.s3.yandex.net/public_services/id.svg_5679334e7dc3439d94a0d0dba5657b21",
+    "slug": "id",
+    "is_active": true,
+    "name": "Яндекс ID",
+    "description": "Яндекс ID - это инфраструктура, которая отвечает за доступ миллионов пользователей к их данным",
+    "group": {
+     "id": 5,
+     "name": "Персональные сервисы",
+     "slug": "personal-services"
+    }
+   },
+   "is_chief": false,
+   "redirect_url": null,
+   "version": 0,
+   "lang": "ru",
+   "title": "Разработчик на Python и Go в Яндекс ID",
+   "short_summary": "Яндекс ID — это инфраструктура, которая отвечает за доступ десятков миллионов пользователей к их данным. Приходите улучшать систему, повышать её надёжность и производительность, обеспечивать безопасность данных. Ждём, что вы разрабатывали бэкенд на Python, готовы программировать на Python и Go.",
+   "modified": "2026-09-29T13:23:42.204238Z"
+  }
+ ]
+}

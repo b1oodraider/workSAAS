@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
+import re
 from typing import Any, ClassVar
 
-from app.llm.base import LLMRequest, LLMResponse, TokenUsage
+from app.llm.base import EmbeddingResponse, LLMRequest, LLMResponse, TokenUsage
 
 
 def _sample(schema: dict[str, Any], defs: dict[str, Any], name: str = "") -> Any:
@@ -41,6 +43,7 @@ class FakeProvider:
     # Tests can pin exact outputs per task name.
     canned: ClassVar[dict[str, dict[str, Any]]] = {}
     calls: ClassVar[list[LLMRequest]] = []
+    embedded: ClassVar[list[str]] = []
 
     def __init__(self, name: str = "fake") -> None:
         self.name = name
@@ -58,3 +61,16 @@ class FakeProvider:
             model=req.model,
             usage=TokenUsage(input_tokens=len(req.system + req.user) // 4, output_tokens=100),
         )
+
+    async def embed(self, model: str, texts: list[str]) -> EmbeddingResponse:
+        """Bag-of-words hashed into 64 dimensions: texts sharing words are close, which is enough
+        to test the pipeline (it knows nothing about synonyms or languages)."""
+        FakeProvider.embedded.extend(texts)
+        vectors = []
+        for text in texts:
+            vec = [0.0] * 64
+            for word in re.findall(r"\w+", text.lower()):
+                vec[int(hashlib.md5(word.encode()).hexdigest(), 16) % 64] += 1.0
+            vectors.append(vec if any(vec) else [1.0] + [0.0] * 63)
+        return EmbeddingResponse(vectors=vectors, model=model,
+                                 usage=TokenUsage(input_tokens=sum(len(t) for t in texts) // 4))

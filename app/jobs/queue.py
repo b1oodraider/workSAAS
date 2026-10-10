@@ -12,9 +12,10 @@ import logging
 import traceback
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import and_, case, or_, select, update
 
 from app.core.config import get_settings
 from app.core.db import session_scope, utcnow
@@ -22,6 +23,14 @@ from app.core.errors import UserError
 from app.models import Job, JobStatus
 
 log = logging.getLogger(__name__)
+
+FINISH_ATTEMPTS = 4
+# Retry after a transient failure (provider down, rate limit) only after a pause, otherwise a
+# short outage uses up all attempts within seconds.
+RETRY_BASE_S = 30
+RETRY_MAX_S = 600
+# Kinds claimed only when no other job is waiting (see _claim_next).
+BULK_KINDS = ("match_triage",)
 
 
 @dataclass
@@ -98,17 +107,26 @@ def recover_stale_jobs() -> int:
         return res.rowcount or 0
 
 
-def _claim_next() -> Job | None:
+def retry_delay(attempts: int) -> timedelta:
+    """Backoff before the next attempt of a transiently failed job: 30 s, 1 min, 2 min ... 10 min."""
+    return timedelta(seconds=min(RETRY_BASE_S * 2 ** max(attempts - 1, 0), RETRY_MAX_S))
+
+
+def _claim_next(*, ignore_delay: bool = False) -> Job | None:
+    # Bulk work (LLM scoring of every vacancy a search found) goes after everything else, so a
+    # big search does not delay a letter the user is waiting for or an auto-apply send.
+    bulk = or_(Job.kind.in_(BULK_KINDS), and_(Job.kind == "analysis", Job.parent_id.is_not(None)))
+    query = select(Job.id).where(Job.status == JobStatus.queued)
+    if not ignore_delay:
+        query = query.where(or_(Job.run_after.is_(None), Job.run_after <= utcnow()))
     with session_scope() as s:
-        job_id = s.scalar(
-            select(Job.id).where(Job.status == JobStatus.queued).order_by(Job.id).limit(1)
-        )
+        job_id = s.scalar(query.order_by(case((bulk, 1), else_=0), Job.id).limit(1))
         if job_id is None:
             return None
         res = s.execute(
             update(Job)
             .where(Job.id == job_id, Job.status == JobStatus.queued)
-            .values(status=JobStatus.running, started_at=utcnow(), attempts=Job.attempts + 1)
+            .values(status=JobStatus.running, started_at=utcnow(), attempts=Job.attempts + 1, run_after=None)
         )
         if not res.rowcount:
             return None
@@ -136,22 +154,37 @@ async def run_job(job: Job) -> None:
         status, error = JobStatus.failed, ("Внутренняя ошибка. Попробуйте ещё раз; если повторится — "
                                            f"напишите администратору (код: {type(exc).__name__})")
         log.error("job %s (%s) crashed:\n%s", job.id, job.kind, traceback.format_exc())
-    with session_scope() as s:
-        values: dict[str, Any] = {"status": status, "error": error}
-        if status != JobStatus.queued:
-            values["finished_at"] = utcnow()
-        if result is not None:
-            values["result"] = result
-            if result.get("result_url"):
-                values["result_url"] = result["result_url"]
-        s.execute(update(Job).where(Job.id == job.id).values(**values))
+    values: dict[str, Any] = {"status": status, "error": error}
+    if status == JobStatus.queued:
+        values["run_after"] = utcnow() + retry_delay(job.attempts)
+    else:
+        values["finished_at"] = utcnow()
+    if result is not None:
+        values["result"] = result
+        if result.get("result_url"):
+            values["result_url"] = result["result_url"]
+    # A job left in 'running' blocks its kind (e.g. all auto-apply sends) until restart:
+    # retry the final write through a transient "database is locked".
+    for attempt in range(FINISH_ATTEMPTS):
+        try:
+            with session_scope() as s:
+                s.execute(update(Job).where(Job.id == job.id).values(**values))
+            return
+        except Exception:  # noqa: BLE001
+            log.exception("job %s: could not store its result", job.id)
+            if attempt + 2 == FINISH_ATTEMPTS:  # last try: maybe the result itself is unstorable
+                values = {"status": JobStatus.failed, "finished_at": utcnow(),
+                          "error": "Внутренняя ошибка: не удалось сохранить результат"}
+            if attempt + 1 < FINISH_ATTEMPTS:
+                await asyncio.sleep(2**attempt)
 
 
 async def drain(max_jobs: int = 1000) -> int:
-    """Run queued jobs sequentially until the queue is empty. Used by tests and CLI."""
+    """Run queued jobs sequentially until the queue is empty, retries included (without waiting
+    for their backoff). Used by tests."""
     count = 0
     while count < max_jobs:
-        job = _claim_next()
+        job = _claim_next(ignore_delay=True)
         if job is None:
             return count
         await run_job(job)
@@ -174,7 +207,14 @@ class Worker:
         sem = asyncio.Semaphore(self.concurrency)
         while not self._stop.is_set():
             await sem.acquire()
-            job = _claim_next()
+            if self._stop.is_set():  # stopped while waiting for a free slot: claim nothing new
+                sem.release()
+                break
+            try:
+                job = _claim_next()
+            except Exception:  # noqa: BLE001 - e.g. "database is locked": the worker must keep polling
+                log.exception("job queue: claim failed")
+                job = None
             if job is None:
                 sem.release()
                 try:

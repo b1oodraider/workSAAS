@@ -40,3 +40,5 @@ class Job(TimestampMixin, Base):
     )
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    # A queued job is not picked up before this time (backoff after a transient failure).
+    run_after: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)

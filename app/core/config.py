@@ -46,6 +46,9 @@ class ProviderConfig(BaseModel):
     headers: dict[str, str] = Field(default_factory=dict)
     # Reseller markup relative to the official price table (budget accounting), e.g. 2.4.
     price_multiplier: float = 1.0
+    # openai_compat only: send the route's `effort` as "reasoning_effort" (gpt-oss, o-series:
+    # limits paid "thinking" tokens). Off by default: some servers reject unknown parameters.
+    send_reasoning_effort: bool = False
 
     @property
     def api_key(self) -> str | None:
@@ -85,6 +88,30 @@ class ModelPrice(BaseModel):
     cache_write: float | None = None
 
 
+class EmbeddingSettings(BaseModel):
+    """Meaning-based prefilter: resume and vacancy texts -> vectors (cached by text for all users).
+
+    Off by default: needs an openai_compat provider with an /embeddings endpoint."""
+
+    enabled: bool = False
+    provider: str = ""
+    model: str = ""
+    # Share of the meaning similarity in the ranking score; the rest is the keyword score.
+    weight: float = Field(0.5, ge=0.0, le=1.0)
+    # Cosine similarity -> 0..100: at or below `low` gives 0, at or above `high` gives 100.
+    # Depends on the model; 0.35..0.75 is a starting guess for bge-m3 (not measured).
+    low: float = 0.35
+    high: float = 0.75
+    # Text cut before embedding (bge-m3 takes ~8k tokens; vacancies are rarely longer than this).
+    max_chars: int = Field(6000, ge=500, le=20000)
+    batch_size: int = Field(32, ge=1, le=256)
+    # At most this many vacancies of one search run get vectors (cost cap for huge runs).
+    max_per_run: int = Field(2000, ge=1)
+    # Vectors are deleted this many days after they were stored, used or not (a bge-m3 vector is
+    # ~2 KB; a text still being found is embedded again). Resume vectors are kept as long too.
+    keep_days: int = Field(60, ge=1)
+
+
 class LLMSettings(BaseModel):
     providers: dict[str, ProviderConfig] = Field(
         default_factory=lambda: {
@@ -97,6 +124,8 @@ class LLMSettings(BaseModel):
             "default": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="medium"),
             # Bulk tasks: same model, lower effort -> fewer thinking tokens.
             "match": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
+            # The most frequent call (each found vacancy): route it to the cheapest model.
+            "match_quick": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
             "resume_profile": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
             "vacancy_review": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
             "follow_up": LLMRoute(provider="anthropic", model="claude-opus-5-5", effort="low"),
@@ -106,6 +135,7 @@ class LLMSettings(BaseModel):
     # Overrides / additions to app.llm.pricing.DEFAULT_PRICES.
     prices: dict[str, ModelPrice] = Field(default_factory=dict)
     cache_enabled: bool = True
+    embeddings: EmbeddingSettings = Field(default_factory=EmbeddingSettings)
 
     def route_for(self, task: str) -> LLMRoute:
         return self.routes.get(task) or self.routes["default"]
@@ -121,10 +151,15 @@ class SourceConfig(BaseModel):
 class MatchingSettings(BaseModel):
     # How many vacancies per search run go to the (paid) LLM match step.
     top_n: int = 15
-    # Vacancies below this prefilter score (0..100) are never sent to LLM.
-    prefilter_min: float = 10.0
+    # Vacancies below this prefilter score (0..100) are never sent to LLM
+    # (10 let through vacancies sharing a single secondary skill).
+    prefilter_min: float = 20.0
     # Max vacancies fetched per query per source.
     fetch_limit: int = 50
+    # Two-step LLM: a cheap `match_quick` (score + one line) for each of the top-N, the full
+    # `match` only for those scoring at least `full_match_min`. false = full match for all top-N.
+    quick_match: bool = True
+    full_match_min: float = 60.0
 
 
 class JobsSettings(BaseModel):
@@ -151,6 +186,10 @@ class TelegramSettings(BaseModel):
     def active(self) -> bool:
         return self.enabled and bool(self.bot_token)
 
+    @property
+    def is_https(self) -> bool:
+        return self.public_url.strip().lower().startswith("https://")
+
 
 class HHApplySelectors(BaseModel):
     """CSS selectors of hh.ru pages used by the browser applier.
@@ -172,6 +211,8 @@ class HHApplySelectors(BaseModel):
     success: str = ('[data-qa="vacancy-response-success-standard-notification"], '
                     '[data-qa="vacancy-response-link-view-topic"]')
     login_form: str = '[data-qa="account-login-form"], [data-qa="login"]'
+    # A card in the applicant's "Отклики" list (status sync); empty = find cards by vacancy links.
+    negotiations_item: str = '[data-qa*="negotiations-item"]'
 
 
 class ApplySettings(BaseModel):
@@ -181,6 +222,12 @@ class ApplySettings(BaseModel):
     hard_daily_max: int = 30          # no user can go above this per day
     min_interval_floor_s: int = 60    # and never faster than one application per this many seconds
     max_consecutive_failures: int = 3  # then auto-apply pauses itself
+    # "auto" mode sends without asking, so the LLM score (which a vacancy text may sway) must be
+    # backed by the keyword prefilter (0..100): above 30 = the title alone is not enough, resume
+    # skills must be found in the text too.
+    auto_min_prefilter: float = 40.0
+    # Read the user's hh.ru "Отклики" (statuses, applications made by hand) every N hours; 0 = off.
+    status_sync_hours: int = 6
     headless: bool = True
     # Optional path to a Chrome/Chromium binary instead of Playwright's bundled one.
     browser_executable: str = ""
@@ -207,8 +254,14 @@ class Settings(BaseSettings):
     # Times are stored in UTC; the UI shows and accepts them in this time zone.
     timezone: str = "Europe/Moscow"
     default_monthly_budget_usd: float = 10.0
-    # Set true when the app is served over HTTPS (VPS behind Caddy/nginx): Secure cookie.
+    # Secure session cookie. On automatically when telegram.public_url starts with https://;
+    # set true to force it (e.g. HTTPS without a public_url).
     session_https_only: bool = False
+    # Addresses of the reverse proxy (Caddy/nginx) allowed to set X-Forwarded-For/-Proto, comma
+    # separated. Login throttling needs the real client IP. Default: proxy on the same host. In
+    # docker the proxy is seen as the network gateway (e.g. "172.17.0.1"); "*" trusts everyone —
+    # only when the app port is reachable from the proxy alone.
+    trusted_proxies: str = "127.0.0.1"
     max_upload_mb: int = 10
 
     llm: LLMSettings = Field(default_factory=LLMSettings)

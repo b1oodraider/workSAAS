@@ -18,7 +18,7 @@ import httpx
 
 from app.core.http import make_async_client
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, matches_query
+from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, matches_query, naive_utc
 
 log = logging.getLogger(__name__)
 
@@ -29,11 +29,11 @@ def _dt(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return parsedate_to_datetime(value).replace(tzinfo=None)
+        return naive_utc(parsedate_to_datetime(value))
     except (TypeError, ValueError):
         pass
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+        return naive_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError:
         return None
 

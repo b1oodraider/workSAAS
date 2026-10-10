@@ -63,9 +63,30 @@ def canonical_for(s: Session, vacancy: Vacancy) -> Vacancy:
     first = s.scalar(
         select(Vacancy)
         .where(Vacancy.dedup_key == vacancy.dedup_key, Vacancy.source.in_(trusted))
-        .order_by(Vacancy.id).limit(1)
+        # A full copy beats a search-result snippet (LinkedIn/getmatch teasers have no description).
+        .order_by(Vacancy.is_partial, Vacancy.id).limit(1)
     )
     return first or vacancy
+
+
+COPY_MAX_AGE = timedelta(days=30)
+
+
+def copy_on(s: Session, vacancy: Vacancy, sources: set[str]) -> Vacancy | None:
+    """This vacancy as stored from one of ``sources`` (the same dedup key), e.g. the hh copy of a
+    vacancy first found on another board — auto-apply works only on sites it knows."""
+    if vacancy.source in sources:
+        return vacancy
+    if not vacancy.dedup_key or not sources:
+        return None
+    from app.sources.registry import SOURCE_CLASSES
+
+    if not getattr(SOURCE_CLASSES.get(vacancy.source), "trusted", False):
+        return None  # a Telegram/RSS post must not steer an application to a real hh vacancy
+    # The freshest one: big employers repost the same title, and old copies are likely archived.
+    return s.scalar(select(Vacancy).where(Vacancy.dedup_key == vacancy.dedup_key, Vacancy.source.in_(sources),
+                                          Vacancy.fetched_at >= utcnow() - COPY_MAX_AGE)
+                    .order_by(Vacancy.fetched_at.desc(), Vacancy.id.desc()).limit(1))
 
 
 def import_for_user(s: Session, user_id: int, draft: VacancyDraft) -> Vacancy:
@@ -269,22 +290,56 @@ MAX_PAGE_BYTES = 3 * 1024 * 1024
 FETCH_TOTAL_TIMEOUT_S = 45
 
 
-async def _ensure_public_host(url: str) -> None:
-    """Block SSRF: users must not make the server fetch localhost/LAN/cloud-metadata addresses."""
+async def _ensure_public_host(url: str) -> str:
+    """Block SSRF: users must not make the server fetch localhost/LAN/cloud-metadata addresses.
+
+    Returns the checked IP: the caller connects to it, so DNS can't switch to an internal
+    address between the check and the request (DNS rebinding)."""
     parts = urlsplit(url)
     host = parts.hostname
     if not host or parts.scheme not in ("http", "https"):
         raise JobError("Некорректная ссылка")
-    if parts.port not in (None, 80, 443):
+    try:
+        port = parts.port
+    except ValueError:
+        raise JobError("Некорректная ссылка") from None
+    if port not in (None, 80, 443):
         raise JobError("Разрешены только стандартные порты 80/443")
     try:
         infos = await asyncio.get_running_loop().getaddrinfo(host, None)
     except OSError as exc:
         raise JobError(f"Не удалось найти сайт {host}") from exc
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if not ip.is_global:
-            raise JobError("Ссылки на локальные и внутренние адреса запрещены")
+    ips = [ipaddress.ip_address(info[4][0].split("%")[0]) for info in infos]
+    if not ips or any(not _public(ip) for ip in ips):
+        raise JobError("Ссылки на локальные и внутренние адреса запрещены")
+    return str(ips[0])
+
+
+_NAT64 = ipaddress.ip_network("64:ff9b::/96")
+
+
+def _public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """is_global, also for IPv4 hidden inside IPv6 (NAT64, mapped, 6to4, Teredo)."""
+    if not ip.is_global:
+        return False
+    if isinstance(ip, ipaddress.IPv6Address):
+        inner = [ip.ipv4_mapped, ip.sixtofour, ip.teredo[1] if ip.teredo else None]
+        if ip in _NAT64:
+            inner.append(ipaddress.IPv4Address(int(ip) & 0xFFFFFFFF))
+        return all(v is None or v.is_global for v in inner)
+    return True
+
+
+def _pinned(url: str, ip: str) -> tuple[str, dict[str, str], dict[str, str]]:
+    """URL with the host replaced by ``ip``, plus the Host header and TLS name of the original."""
+    parts = urlsplit(url)
+    host = f"[{ip}]" if ":" in ip else ip
+    name = f"[{parts.hostname}]" if ":" in (parts.hostname or "") else parts.hostname
+    if parts.port:
+        host += f":{parts.port}"
+    netloc = name + (f":{parts.port}" if parts.port else "")
+    extensions = {"sni_hostname": parts.hostname} if parts.scheme == "https" else {}
+    return parts._replace(netloc=host).geturl(), {"Host": netloc}, extensions
 
 
 async def draft_from_url(url: str) -> VacancyDraft:
@@ -304,15 +359,16 @@ async def draft_from_url(url: str) -> VacancyDraft:
 
 async def _fetch_public_page(url: str) -> str:
     """GET with a size cap; redirects are followed manually so every hop is checked
-    against internal addresses (residual risk: DNS rebinding between check and connect)."""
+    against internal addresses, and each request goes to the IP that was checked."""
     async with make_async_client(follow_redirects=False) as client:
         target = url
         for _ in range(5):
-            await _ensure_public_host(target)
+            ip = await _ensure_public_host(target)
+            pinned, headers, extensions = _pinned(target, ip)
             try:
-                async with client.stream("GET", target) as resp:
+                async with client.stream("GET", pinned, headers=headers, extensions=extensions) as resp:
                     if resp.is_redirect and resp.headers.get("location"):
-                        target = str(resp.url.join(resp.headers["location"]))
+                        target = str(httpx.URL(target).join(resp.headers["location"]))
                         continue
                     if resp.status_code >= 400:
                         raise JobError(f"Страница вернула ошибку {resp.status_code}")

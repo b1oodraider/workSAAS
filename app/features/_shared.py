@@ -11,6 +11,11 @@ from sqlalchemy.orm import Session
 
 from app.models import Analysis
 
+# Length caps for free-text params: they go into prompts, so an unbounded field is an unbounded bill.
+SHORT_TEXT_MAX = 200  # a word or a title (language, role)
+LINE_TEXT_MAX = 2000  # a one-line wish or note
+LONG_TEXT_MAX = 8000  # pasted text: a letter, a recruiter message, offer terms
+
 
 def latest_output(s: Session, user_id: int, kind: str, *, resume_id: int | None = None,
                   vacancy_id: int | None = None, vacancy_level: bool = False) -> dict[str, Any] | None:

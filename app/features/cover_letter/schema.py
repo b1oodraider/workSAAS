@@ -4,9 +4,13 @@ from pydantic import BaseModel, Field
 
 
 class CoverLetter(BaseModel):
-    subject: str = Field(description="Тема письма / первая строка отклика")
+    # Facts first: the model picks what it can back up from the resume, then writes the letter.
+    key_points_used: list[str] = Field(
+        description="До 4 фактов из резюме, которые войдут в письмо, с источником: «место работы/проект — факт»"
+    )
+    subject: str = Field(description="Тема для email (в отклике на hh.ru не используется)")
     body: str = Field(description="Готовый текст сопроводительного письма")
-    key_points_used: list[str] = Field(description="Какие факты из резюме использованы")
     warnings: list[str] = Field(
-        description="О чём кандидату стоит знать перед отправкой: слабые места, что проверить/дописать самому"
+        description="До 4: что проверить или дописать самому перед отправкой (пробелы, неотвеченные вопросы "
+                    "работодателя, сомнительные места)"
     )

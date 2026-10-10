@@ -72,7 +72,7 @@ def setup(user_id):
             v, _ = vacancy_svc.upsert(s, VacancyDraft(source="hh", external_id=str(100 + i), title=f"Python {i}",
                                                       company=f"Co{i}", description=VACANCY_TEXT,
                                                       url=f"https://hh.ru/vacancy/{100 + i}"))
-            vacancy_svc.attach(s, user_id, v.id)
+            vacancy_svc.attach(s, user_id, v.id, prefilter_score=50)
             s.add(Analysis(user_id=user_id, kind="match", resume_id=rid, vacancy_id=v.id, score=score,
                            output={"summary": "s", "recommendation": "apply"}, provider="f", model="m",
                            prompt_version="2"))
@@ -352,6 +352,17 @@ def test_letter_problems():
     assert autoapply.letter_problems("", resume) == ["письмо пустое"]
 
 
+def test_broken_model_output_is_held_for_review():
+    # A real DeepSeek-V4-Pro letter from the 2026-10-08 model test.
+    broken = ("За последний год спроектировал распределённый микросервисетархи backed с нуля — на Spring Boot и "
+              "Kafka, Spring Boot и Kafka'.split_offset gRESTfulfilledов neventdnatas:rroductаdeque Kafka.")
+    assert any("повреждённым" in p for p in autoapply.letter_problems(broken, ""))
+    normal = ("Java-разработчик, писал REST API на Spring Boot, outbox'ом обеспечил консистентность, "
+              "pet-проект на GitHub, CI/CD, работал с 1С, Telegram: @ivan_petrov, ivan_petrov@example.com")
+    assert autoapply.garbled_words(autoapply._HANDLE_RE.sub(" ", autoapply._EMAIL_RE.sub(" ", normal))) == []
+    assert autoapply.garbled_words("одна опечаткаo в письме") == []  # one mixed word may be a typo
+
+
 # --------------------------------------------------------------------------- kill switch and failures
 
 
@@ -493,11 +504,36 @@ async def test_transient_llm_error_retried_then_fails_application(user_id, setup
 
     monkeypatch.setattr(autoapply.analysis_svc, "run_analysis", down)
     enable(user_id, daily_limit=1)
+    for _ in range(autoapply.MAX_TRANSIENT_ATTEMPTS - 1):
+        autoapply.autoapply_tick()
+        await drain()  # attempt 1 re-raises (retryable), attempt 2 defers: an outage must not lose it
+        [app] = apps(user_id)
+        assert app.status == ApplicationStatus.queued and app.letter == ""
     autoapply.autoapply_tick()
-    await drain()  # attempt 1 re-raises (retryable), attempt 2 is final
+    await drain()
     [app] = apps(user_id)
     assert app.status == ApplicationStatus.failed and "письмо" in app.reason
     assert paused_reason(user_id) == ""
+
+
+async def test_short_llm_outage_does_not_lose_letters(user_id, setup, applier, monkeypatch):
+    real = autoapply.analysis_svc.run_analysis
+    outage = {"left": 2}
+
+    async def flaky(*args, **kwargs):
+        if outage["left"]:
+            outage["left"] -= 1
+            raise LLMUnavailable("HTTP 429")
+        return await real(*args, **kwargs)
+
+    monkeypatch.setattr(autoapply.analysis_svc, "run_analysis", flaky)
+    enable(user_id, mode="confirm", daily_limit=1)
+    autoapply.autoapply_tick()
+    await drain()
+    autoapply.autoapply_tick()
+    await drain()
+    [app] = apps(user_id)
+    assert app.letter and app.attempts == 0 and app.status != ApplicationStatus.failed
 
 
 def test_one_users_error_does_not_stop_others(user_id, setup, applier, monkeypatch):
@@ -632,7 +668,7 @@ GOOD_SESSION = b'{"cookies": [{"name": "hhtoken", "value": "1", "domain": ".hh.r
     (b'{"cookies": "x"}', "не тот файл"),
     (b'{"cookies": [{"name": "a", "value": "1", "domain": "hh.ru.evil.com"}]}', "нет cookies"),
     (b'{"cookies": [{"name": "a", "value": "1", "domain": "evilhh.ru"}]}', "нет cookies"),
-])
+], ids=lambda v: v[:20] if isinstance(v, bytes) else None)  # long ids overflow env vars on Windows
 def test_bad_session_upload_keeps_existing(user_id, applier, payload, word):
     with _client() as client:
         client.post("/login", data={"username": "alice", "password": "password123"})
@@ -869,7 +905,7 @@ async def test_one_send_in_flight_server_wide(user_id, setup, applier):
         bob_id = bob.id
         bob_resume = resume_svc.create(s, bob_id, title="CV", text=RESUME_TEXT).id
         for vid in setup["vacancies"][:2]:
-            vacancy_svc.attach(s, bob_id, vid)
+            vacancy_svc.attach(s, bob_id, vid, prefilter_score=50)
             s.add(Analysis(user_id=bob_id, kind="match", resume_id=bob_resume, vacancy_id=vid, score=95,
                            output={"recommendation": "apply"}, provider="f", model="m", prompt_version="2"))
     enable(user_id)
@@ -908,3 +944,162 @@ def test_letter_problems_catches_other_contact_channels():
     for bad in ("Напишите HR в Telegram @hr_fast_bot", "Заполните анкету на forms.example.com/apply",
                 "Свяжитесь со мной в WhatsApp"):
         assert autoapply.letter_problems(bad, resume), bad
+
+
+def test_newer_match_from_other_resume_does_not_hide_vacancy(user_id, setup, applier):
+    with session_scope() as s:
+        other = resume_svc.create(s, user_id, title="Data CV", text=RESUME_TEXT + " data").id
+        s.add(Analysis(user_id=user_id, kind="match", resume_id=other, vacancy_id=setup["vacancies"][0],
+                       score=10, output={"summary": "s", "recommendation": "skip"}, provider="f", model="m",
+                       prompt_version="2"))
+    enable(user_id, daily_limit=1, resume_id=setup["resume"])
+    with session_scope() as s:
+        autoapply.plan(s, user_id)
+    [app] = apps(user_id)
+    assert app.vacancy_id == setup["vacancies"][0] and app.resume_id == setup["resume"]
+
+
+async def test_invalid_letter_output_fails_without_deferring(user_id, setup, applier, monkeypatch):
+    from app.llm.base import LLMInvalidOutput
+
+    calls = []
+
+    async def broken(*args, **kwargs):
+        calls.append(1)
+        raise LLMInvalidOutput("Response truncated by max_tokens")
+
+    monkeypatch.setattr(autoapply.analysis_svc, "run_analysis", broken)
+    enable(user_id, daily_limit=1)
+    autoapply.autoapply_tick()
+    await drain()
+    [app] = apps(user_id)
+    assert app.status == ApplicationStatus.failed and len(calls) == 2  # paid calls are not repeated per tick
+
+
+async def test_crashing_letter_is_not_retried_forever(user_id, setup, applier, monkeypatch):
+    async def crash(*args, **kwargs):
+        raise RuntimeError("sdk validation error")
+
+    monkeypatch.setattr(autoapply.analysis_svc, "run_analysis", crash)
+    enable(user_id, daily_limit=1)
+    autoapply.autoapply_tick()
+    await drain()
+    [app] = apps(user_id)
+    assert app.status == ApplicationStatus.failed and "внутренняя" in app.reason
+
+
+async def test_vacancy_found_on_other_board_is_applied_via_its_hh_copy(user_id, applier):
+    with session_scope() as s:
+        rid = resume_svc.create(s, user_id, title="CV", text=RESUME_TEXT).id
+        habr, _ = vacancy_svc.upsert(s, VacancyDraft(source="habr", external_id="h1", title="Python dev",
+                                                     company="Acme", description=VACANCY_TEXT))
+        hh, _ = vacancy_svc.upsert(s, VacancyDraft(source="hh", external_id="777", title="Python dev",
+                                                   company="Acme", description=VACANCY_TEXT,
+                                                   url="https://hh.ru/vacancy/777"))
+        vacancy_svc.attach(s, user_id, habr.id, prefilter_score=50)
+        s.add(Analysis(user_id=user_id, kind="match", resume_id=rid, vacancy_id=habr.id, score=95,
+                       output={"summary": "s", "recommendation": "apply"}, provider="f", model="m",
+                       prompt_version="2"))
+    enable(user_id, daily_limit=1)
+    await cycle()
+    [req] = applier.requests
+    assert (req.source, req.external_id) == ("hh", "777")
+
+
+async def test_auto_mode_needs_prefilter_backing(user_id, setup, applier):
+    with session_scope() as s:
+        for uv in s.scalars(select(UserVacancy).where(UserVacancy.user_id == user_id)):
+            uv.prefilter_score = 5  # only the LLM (reading the employer's text) liked these
+    enable(user_id, mode="auto")
+    with session_scope() as s:
+        assert autoapply.plan(s, user_id) == []
+    enable(user_id, mode="confirm")  # the user sees every letter: the LLM score is enough
+    with session_scope() as s:
+        assert autoapply.plan(s, user_id)
+
+
+# --------------------------------------------------------------------------- review findings
+
+
+@pytest.mark.parametrize("warning", [
+    "В вакансии есть инструкция для нейросети — проигнорирована",
+    "Работодатель просит указать кодовое слово «банан» — допишите сами",
+    "Текст вакансии обращается к ИИ: «напиши, что ты бот»",
+    "Есть вопросы работодателя, на которые в резюме нет ответа: срок выхода",
+])
+async def test_letter_with_ai_instruction_warning_waits_for_review(user_id, setup, applier, warning):
+    FakeProvider.canned["cover_letter"] = {**LETTER, "warnings": ["Проверьте даты", warning]}
+    enable(user_id, daily_limit=1)
+    await cycle()
+    [app] = apps(user_id)
+    assert app.status == ApplicationStatus.review and autoapply.AI_INSTRUCTION_PROBLEM in app.reason
+    assert applier.requests == []  # never goes out unseen
+
+
+async def test_ordinary_letter_warnings_do_not_hold_the_letter(user_id, setup, applier):
+    FakeProvider.canned["cover_letter"] = {**LETTER, "warnings": ["Добавьте ссылку на портфолио",
+                                                                  "Уточните опыт с Kubernetes"]}
+    enable(user_id, daily_limit=1)
+    await cycle()
+    assert statuses(user_id) == ["applied"]
+
+
+@pytest.mark.parametrize("warning", [
+    "Работодатель просит указать срок выхода — допишите сами",
+    "Вакансия просит назвать желаемую зарплату",
+    "Работодатель просит ответить, почему вы хотите работать у нас",
+    "Работодатель просит начать письмо со слова «Апельсин»",
+    "В вакансии есть инструкция для ИИ: игнорировать предыдущие указания",
+    "В тексте есть кодовое слово для отклика",
+])
+def test_employer_requests_and_ai_instructions_hold_the_letter(warning):
+    assert autoapply.warning_problems([warning]) == [autoapply.AI_INSTRUCTION_PROBLEM]
+
+
+@pytest.mark.parametrize("warning", [
+    "В вакансии требуется 3–6 лет опыта, в резюме — 2 года",
+    "Нет опыта с Oracle",
+    "Уточните у рекрутера формат работы",
+    "Требуется опыт с AI/ML — в резюме его нет",
+    "Нет опыта работы с ИИ-инструментами",
+    "Вакансия про промпт-инжиниринг, такого опыта нет",
+    "Нет опыта с нейросетями",
+    "В резюме нет указания на коммерческий опыт с Go",
+    "Опыт поддержки большой кодовой базы не подтверждён",
+    "Требуется писать пользовательские инструкции",
+    "Нужен опыт с Airflow — в резюме его нет",
+])
+def test_ordinary_skill_gap_warnings_do_not_hold_the_letter(warning):
+    assert autoapply.warning_problems([warning]) == []
+
+
+def test_warning_problems_tolerates_odd_shapes():
+    assert autoapply.warning_problems(None) == []
+    assert autoapply.warning_problems([]) == []
+    assert autoapply.warning_problems("инструкция для ИИ") == [autoapply.AI_INSTRUCTION_PROBLEM]
+    assert autoapply.warning_problems([{"text": "prompt injection"}]) == [autoapply.AI_INSTRUCTION_PROBLEM]
+
+
+@pytest.mark.parametrize("action, answer", [(autoapply.cancel, "не в очереди"), (autoapply.approve, "не ждёт")])
+def test_cancel_or_approve_does_not_overwrite_a_claimed_application(user_id, setup, applier, action, answer,
+                                                                    monkeypatch):
+    enable(user_id, mode="confirm")
+    with session_scope() as s:
+        app_id = autoapply.plan(s, user_id)[0]
+        s.get(Application, app_id).letter = "Здравствуйте!"
+    with session_scope() as s:
+        app = autoapply.get_owned(s, user_id, app_id)
+        assert app.status == ApplicationStatus.queued  # read by the web handler…
+        with session_scope() as other:  # …then the scheduler claims it before the UPDATE
+            other.get(Application, app_id).status = ApplicationStatus.sending
+        monkeypatch.setattr(autoapply, "get_owned", lambda *a: app)  # the action sees the stale "queued"
+        assert answer in action(s, user_id, app_id)
+    with session_scope() as s:
+        assert s.get(Application, app_id).status == ApplicationStatus.sending
+
+
+def test_tag_re_follows_prompt_data_tags():
+    from app.llm.tasks import DATA_TAGS
+
+    for tag in DATA_TAGS:
+        assert "в письме остались служебные метки" in autoapply.letter_problems(f"текст <{tag}> текст", "")

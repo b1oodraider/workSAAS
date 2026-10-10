@@ -28,7 +28,7 @@ def _children_summary(s: Session, job_id: int) -> dict[str, int]:
 
 
 @router.get("")
-def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     jobs = list(s.scalars(
         select(Job).where(Job.user_id == user.id).order_by(Job.id.desc()).limit(100)
     ))
@@ -37,7 +37,7 @@ def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Se
 
 @router.get("/{job_id}")
 def detail(job_id: int, request: Request, user: CurrentUser = Depends(current_user),
-           s: Session = Depends(db)):
+           s: Session = Depends(db, scope="function")):
     job = _get(s, user, job_id)
     children = _children_summary(s, job.id)
     pending_children = children.get("queued", 0) + children.get("running", 0)
@@ -49,7 +49,7 @@ def detail(job_id: int, request: Request, user: CurrentUser = Depends(current_us
 
 
 @router.get("/{job_id}/status")
-def status(job_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def status(job_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     job = _get(s, user, job_id)
     children = _children_summary(s, job.id)
     return JSONResponse({

@@ -3,7 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from app.features import register
-from app.features._shared import pair_context
+from app.features._shared import LINE_TEXT_MAX, pair_context
 from app.features.base import AnalysisFeature, feature_dir
 from app.features.interview_prep.schema import InterviewPrep
 from app.llm.tasks import LLMTask
@@ -13,7 +13,7 @@ class Params(BaseModel):
     stage: Literal["hr_screen", "technical", "final"] = Field(
         "technical", title="Этап", json_schema_extra={"labels": {
             "hr_screen": "скрининг с HR", "technical": "техническое", "final": "финальное"}})
-    focus: str = Field("", title="На что сделать упор (необязательно)")
+    focus: str = Field("", title="На что сделать упор (необязательно)", max_length=LINE_TEXT_MAX)
 
 
 FEATURE = register(

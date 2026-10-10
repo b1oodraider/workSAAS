@@ -140,6 +140,25 @@ async def test_auto_mode_falls_back_to_web_when_api_denied(monkeypatch):
     assert not src._use_api()  # API skipped for a while
 
 
+async def test_blacklisted_user_agent_falls_back_to_web(monkeypatch):
+    """hh.ru answers 400 "bad_user_agent" (not 401/403) to clients it blacklisted."""
+    import httpx
+
+    monkeypatch.setattr(hh_module, "_api_denied_until", 0.0)
+    real = httpx.AsyncClient
+    body = {"description": "Bad User-Agent header", "errors": [{"value": "blacklisted", "type": "bad_user_agent"}]}
+    monkeypatch.setattr(hh_module, "make_async_client", lambda **kw: real(
+        transport=httpx.MockTransport(lambda r: httpx.Response(400, json=body))))
+    src = HHSource(SourceConfig(options={"mode": "auto"}))
+    with pytest.raises(ApiDenied, match="User-Agent"):
+        await src._api_fetch("888")
+    fetcher = FakeFetcher([Page("https://hh.ru/vacancy/888", 200, MARKUP_VACANCY_PAGE)])
+    monkeypatch.setattr(src, "_fetcher", lambda: fetcher)
+    draft = await src.fetch("888")  # import by link still works, via the website
+    assert draft is not None and draft.title == "Аналитик"
+    assert not src._use_api()
+
+
 async def test_web_search_reports_captcha(monkeypatch):
     src = HHSource(SourceConfig(options={"mode": "web"}))
     fetcher = FakeFetcher([Page("https://hh.ru/account/captcha", 200, "<html>captcha</html>")])

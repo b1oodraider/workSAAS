@@ -85,6 +85,8 @@ class UserVacancy(TimestampMixin, Base):
         Enum(UserVacancyStatus, native_enum=False, length=16), default=UserVacancyStatus.new
     )
     prefilter_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # Meaning similarity to the resume, 0..100 (None when [llm.embeddings] is off).
+    semantic_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     search_id: Mapped[int | None] = mapped_column(
         ForeignKey("saved_searches.id", ondelete="SET NULL"), nullable=True, index=True
     )

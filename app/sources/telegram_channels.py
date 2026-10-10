@@ -6,21 +6,30 @@ classifier before they become vacancies.
 
 Options:
   channels      list of channel usernames (without @)
-  pages         how many preview pages (~20 posts each) to read per channel (default 2)
-  min_interval  seconds between requests to t.me (default 2)
+  pages         how many preview pages (~20 posts each) to read per channel (1..5, default 2)
+  min_interval  seconds between requests to t.me (default 2, at least 1)
+  max_queries   only the first N queries of a search run may fetch channels (default 3);
+                channels are read once per run and every query is matched against them
 """
 
 from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime
-from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
 from app.core.text import html_to_text
-from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, matches_query, safe_map
+from app.sources.base import (
+    JobSource,
+    SearchQuery,
+    SourceError,
+    VacancyDraft,
+    matches_query,
+    query_words,
+    relevance_key,
+    safe_map,
+)
 from app.sources.salary import parse_salary_text
 from app.sources.jsonld import parse_date
 from app.sources.web import make_fetcher
@@ -42,6 +51,8 @@ _HASHTAG_RE = re.compile(r"#[\w\d_]+")
 _EMOJI_RE = re.compile(r"[\U0001F000-\U0001FAFF☀-➿️]")
 _COMPANY_RE = re.compile(r"(?:компания|company|работодатель)\s*[:—-]\s*(.+)", re.I)
 _SALARY_LINE_RE = re.compile(r"(₽|руб|\$|€|usd|eur|\d\s?[kк]\b|зп|з/п|зарплат|вилка|оклад)", re.I)
+# Public channel usernames go into t.me URL paths.
+_CHANNEL_RE = re.compile(r"^[A-Za-z0-9_]{3,64}$")
 
 
 def is_vacancy_post(text: str) -> bool:
@@ -107,46 +118,67 @@ def parse_channel_page(html: str, channel: str) -> tuple[list[VacancyDraft], str
     return drafts, (str(min_id) if min_id is not None else None)
 
 
+# Public channels with IT vacancies in Russian, checked 2026-10-08 (t.me/s/<name> answers and most
+# recent posts pass is_vacancy_post). Used when config.toml has no `channels` option.
+DEFAULT_CHANNELS = (
+    "it_vakansii_jobs", "remocate", "product_jobs", "javadevjob", "pydevjob", "godevjob", "phpdevjob",
+    "jsdevjob", "csharpdevjob", "cppdevjob", "datajob", "datasciencejobs", "datajobschannel", "devjobs",
+    "gamedevjob", "careerspace", "jc_it", "remote_job_ru", "geekjobs", "jobforjunior",
+)
+
+
 class TelegramChannelsSource(JobSource):
     name = "telegram"
     trusted = False
-    enabled_by_default = False
+    checked_by_default = False
     title = "Telegram-каналы"
-    hint = "публичные каналы из конфига"
+    hint = "IT-каналы с вакансиями; список можно сменить в конфиге"
 
     def _channels(self) -> list[str]:
-        raw: Any = self.cfg.options.get("channels") or []
-        return [str(c).lstrip("@").strip() for c in raw if str(c).strip()]
+        channels = [c.lstrip("@").strip() for c in self.opt_list("channels", DEFAULT_CHANNELS)]
+        return [c for c in channels if _CHANNEL_RE.match(c)]
 
     async def search(self, query: SearchQuery, limit: int) -> list[VacancyDraft]:
         channels = self._channels()
         if not channels:
             return []
-        pages = int(self.cfg.options.get("pages", 2))
-        # Pages are cached for 10 minutes: a search run asks the same channels for every query.
+        # Channels are read once per run (memoised parsed posts) and filtered for every query;
+        # only the first ``max_queries`` queries may reach t.me for channels not read yet.
+        allow_network = self.take_query_slot()
+        pending = [c for c in channels if allow_network or self.is_memoized(("channel", c))]
+        if not pending:
+            return []
+        pages = self.opt_int("pages", 2, lo=1, hi=5)
         fetcher = make_fetcher("http", use_proxy=self.cfg.use_proxy, cache_ttl=600,
-                               min_interval=float(self.cfg.options.get("min_interval", 2.0)))
+                               min_interval=self.opt_float("min_interval", 2.0, floor=1.0))
+        words = query_words(query.text)
         drafts: dict[str, VacancyDraft] = {}
         failed: list[str] = []
         try:
-            for channel in channels:
+            for channel in pending:
                 try:
-                    for d in await self._read_channel(fetcher, channel, pages):
-                        if matches_query(f"{d.title}\n{d.description}", query.text):
-                            drafts.setdefault(d.external_id, d)
+                    posts = await self.memoized(("channel", channel),
+                                                lambda c=channel: self._read_channel(fetcher, c, pages))
                 except SourceError as exc:
                     log.warning("telegram channel %s: %s", channel, exc)
                     failed.append(channel)
+                    continue
+                for d in posts:
+                    if matches_query(f"{d.title}\n{d.description}", query.text):
+                        drafts.setdefault(d.external_id, d)
         finally:
             await fetcher.close()
-        if failed and len(failed) == len(channels):
+        if failed and len(failed) == len(pending):
             raise SourceError("t.me недоступен или ограничил запросы")
-        result = sorted(drafts.values(), key=lambda d: d.published_at or datetime.min, reverse=True)
+        result = sorted(drafts.values(), reverse=True,
+                        key=lambda d: relevance_key(d.title, d.description, d.published_at, words))
         return result[:limit]
 
     async def fetch(self, external_id: str) -> VacancyDraft | None:
         """Single post (used for URL import); no vacancy classifier here — the user chose it."""
         channel, _, post_id = external_id.partition("/")
+        if not _CHANNEL_RE.match(channel) or not post_id.isdigit():
+            return None
         fetcher = make_fetcher("http", use_proxy=self.cfg.use_proxy)
         try:
             page = await fetcher.get(f"https://t.me/{channel}/{post_id}", {"embed": "1"})

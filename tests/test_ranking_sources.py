@@ -25,7 +25,8 @@ def test_ranker_hard_filters():
     r = KeywordRanker()
     f = SearchFilters(remote_only=True, salary_min=200_000, exclude_words=["битрикс"])
     assert r.score(PROFILE, RankInput("Python dev", "Python", remote=False), f).excluded
-    assert r.score(PROFILE, RankInput("Python dev", "Python", salary_to=100_000), f).excluded
+    assert r.score(PROFILE, RankInput("Python dev", "Python", salary_to=100_000, currency="RUR"), f).excluded
+    assert not r.score(PROFILE, RankInput("Python dev", "Python", salary_to=5000), f).excluded  # unknown currency
     assert r.score(PROFILE, RankInput("Python dev", "Python и Битрикс"), f).excluded
     assert r.score(PROFILE, RankInput("Программист 1С", "1С"), SearchFilters()).excluded
     assert not r.score(PROFILE, RankInput("Python dev", "Python", remote=True, salary_to=300_000), f).excluded

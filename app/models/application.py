@@ -45,7 +45,7 @@ class Application(TimestampMixin, Base):
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True, index=True)
     # When the user was told about the result / asked to confirm (Telegram).
     notified_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    # Sending attempts that ended in a transient error (site unreachable); capped by the service.
+    # Letter/sending attempts that ended in a transient error (LLM or site down); capped by the service.
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
     vacancy: Mapped[Vacancy] = relationship(lazy="joined")

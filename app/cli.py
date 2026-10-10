@@ -5,11 +5,13 @@
     worksaas set-password alice
     worksaas set-budget alice 10
     worksaas doctor [--llm]    # check config, job sites, bot token, LLM access
+    worksaas compare-letters alice --resume 1 --vacancy 12 --vacancy 15   # blind model test
     worksaas site-login hh alice   # log in to hh.ru in a browser window, save session for auto-apply
     worksaas backup [path]     # consistent SQLite copy, safe while running
     worksaas run [--host 127.0.0.1] [--port 8000]
     worksaas worker            # separate worker process (if jobs.run_in_web_process=false)
-    worksaas bot               # Telegram bot only (if it doesn't run inside the web process)
+    worksaas bot               # Telegram bot only (if jobs.run_in_web_process=false: then the web
+                               # process starts neither the worker nor the bot)
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import argparse
 import asyncio
 import getpass
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -205,12 +208,56 @@ def cmd_doctor(args) -> None:
     sys.exit(1 if failed else 0)
 
 
+def cmd_compare_letters(args) -> None:
+    """Write letters for the same vacancies with several models; blind report for side-by-side review."""
+    from app.core.db import session_scope
+    from app.core.errors import UserError
+    from app.models import UserVacancy, Vacancy
+    from app.plugins import load_all
+    from app.services import model_compare
+    from app.services import resumes as resume_svc
+
+    load_all()
+    _migrate()
+    with session_scope() as s:
+        user_id = _get_user(s, args.username).id
+        if not args.resume or not args.vacancy:
+            print("Резюме (--resume):")
+            for r in resume_svc.list_for_user(s, user_id):
+                print(f"  {r.id}: {r.title}")
+            print("Последние вакансии (--vacancy, можно несколько раз; лучше 4–5 разных):")
+            rows = s.execute(select(Vacancy.id, Vacancy.title, Vacancy.company).join(
+                UserVacancy, UserVacancy.vacancy_id == Vacancy.id).where(UserVacancy.user_id == user_id)
+                .order_by(UserVacancy.id.desc()).limit(30))
+            for vid, title, company in rows:
+                print(f"  {vid}: {title}{' — ' + company if company else ''}")
+            sys.exit("\nПример: worksaas compare-letters alice --resume 1 --vacancy 12 --vacancy 15 --vacancy 31")
+    specs = args.model or list(model_compare.DEFAULT_LETTER_MODELS)
+    try:
+        targets = [model_compare.parse_target(spec) for spec in specs]
+        print(f"Пишу {len(args.vacancy) * len(targets)} писем: {len(args.vacancy)} вакансий × {len(targets)} моделей…")
+        runs = asyncio.run(model_compare.compare_letters(user_id, args.resume, args.vacancy, targets,
+                                                         params={"tone": args.tone, "length": args.length}))
+    except UserError as exc:
+        sys.exit(f"Не получилось: {exc}")
+    out = model_compare.write_report(runs, user_id, args.resume, model_compare.report_dir(args.out))
+    failed = [r for r in runs if r.error]
+    print(f"Готово: {out}\n  blind.md — письма вслепую, key.md — какая модель где, токены и стоимость, "
+          f"inputs.md — резюме и вакансии.")
+    if failed:
+        print(f"Ошибок: {len(failed)} (подробности в key.md), например: {failed[0].target.model}: {failed[0].error[:200]}")
+
+
 def cmd_run(args) -> None:
     import uvicorn
 
+    from app.core.config import get_settings
+
     _migrate()
+    # Behind Caddy/nginx: take the client IP (login throttling) and scheme from X-Forwarded-*,
+    # but only from the proxy's own address.
     uvicorn.run("app.main:create_app", factory=True, host=args.host, port=args.port,
-                log_level="info")
+                log_level="info", proxy_headers=True, forwarded_allow_ips=get_settings().trusted_proxies)
 
 
 def cmd_worker(_args) -> None:
@@ -241,6 +288,9 @@ def cmd_bot(_args) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
+    if os.name == "posix":
+        # The DB, backups and job-site session files hold personal data: owner-only permissions.
+        os.umask(0o077)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from app.bot.api import silence_http_logs
 
@@ -282,6 +332,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--llm", action="store_true", help="сделать пробный запрос к каждой модели из маршрутов")
     p.set_defaults(fn=cmd_doctor)
 
+    p = sub.add_parser("compare-letters", help="письма на одни и те же вакансии разными моделями — отчёт вслепую")
+    p.add_argument("username", help="ваш логин в workSAAS")
+    p.add_argument("--resume", type=int, help="id резюме (без параметров команда покажет список)")
+    p.add_argument("--vacancy", type=int, action="append", help="id вакансии; можно несколько раз")
+    p.add_argument("--model", action="append",
+                   help="провайдер:модель, можно несколько раз; по умолчанию 5 кандидатов Cloud.ru "
+                        "(провайдер должен называться cloudru)")
+    p.add_argument("--tone", default="friendly", choices=["friendly", "formal", "concise", "enthusiastic"])
+    p.add_argument("--length", default="short", choices=["short", "medium", "long"])
+    p.add_argument("--out", help="папка для отчёта (относительная — внутри data/); по умолчанию data/letter-tests/<дата>")
+    p.set_defaults(fn=cmd_compare_letters)
+
     p = sub.add_parser("backup", help="копия базы SQLite (можно на работающем приложении)")
     p.add_argument("path", nargs="?", help="куда сохранить; по умолчанию data/backups/")
     p.set_defaults(fn=cmd_backup)
@@ -292,7 +354,8 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(fn=cmd_run)
 
     sub.add_parser("worker").set_defaults(fn=cmd_worker)
-    sub.add_parser("bot", help="только Telegram-бот (если веб запущен с telegram.enabled=false)").set_defaults(fn=cmd_bot)
+    sub.add_parser("bot", help="только Telegram-бот: нужен, если jobs.run_in_web_process=false "
+                               "(тогда веб-процесс не запускает ни задачи, ни бота)").set_defaults(fn=cmd_bot)
 
     args = parser.parse_args(argv)
     args.fn(args)

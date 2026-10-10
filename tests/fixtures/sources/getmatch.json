@@ -1,0 +1,320 @@
+{
+ "meta": {
+  "total": 3,
+  "offset": 0,
+  "limit": 3
+ },
+ "offers": [
+  {
+   "published_at": "2026-10-07T15:41:07.871788",
+   "is_active": true,
+   "position": "Senior Python Developer",
+   "language": "eng",
+   "type": "web_and_tg",
+   "id": 36009,
+   "offer_type": "vacancy",
+   "cover_letter_required": false,
+   "cover_letter_placeholder": null,
+   "source": "manual",
+   "incognito_publication": false,
+   "salary_description": "",
+   "salary_hidden": true,
+   "salary_display_from": null,
+   "salary_display_to": null,
+   "salary_currency": null,
+   "salary_taxes": "net",
+   "salary_is_total": false,
+   "salary_by_our_version": false,
+   "salary_hidden_variant": null,
+   "offer_description": "<b>What to do:</b> Break up the monolith and design scalable microservices, develop and integrate new features in a high-load environment, build scalable and secure services.\n\n<b>About the company:</b> TradingView is an analytical platform and social network used by millions of investors and traders in more than 100 countries. It provides access to data from 100+ trading venues worldwide. Its technologies are used by over 60,000 companies globally, including Investing.com, Seeking Alpha, Lenta, ",
+   "skills_objects": [
+    {
+     "name": "Python",
+     "slug": "python",
+     "is_custom": false
+    },
+    {
+     "name": "Django",
+     "slug": "django",
+     "is_custom": false
+    },
+    {
+     "name": "DRF",
+     "slug": "drf",
+     "is_custom": false
+    },
+    {
+     "name": "Docker",
+     "slug": "docker",
+     "is_custom": false
+    },
+    {
+     "name": "Kubernetes",
+     "slug": "kubernetes",
+     "is_custom": false
+    }
+   ],
+   "url": "/vacancies/36009-senior-python-developer",
+   "description_html": null,
+   "english_level": {
+    "name": "B2 — Upper-Intermediate",
+    "vacancy_description": "Знаете термины, свободно говорите на рабочие темы. Помощь нужна в редких случаях"
+   },
+   "location_requirements": [
+    {
+     "location_id": "tbilisi__t-bilisi__georgia",
+     "format": "hybrid",
+     "exclude": false,
+     "ancestors": [
+      "tbilisi",
+      "t-bilisi__georgia",
+      "georgia",
+      "_cu-world"
+     ],
+     "metros": [],
+     "city": "Tbilisi",
+     "country": "Georgia"
+    }
+   ],
+   "location_items": [
+    {
+     "label": "Tbilisi (Georgia)",
+     "format": "hybrid",
+     "exclude": false
+    },
+    {
+     "label": "Limassol (Cyprus)",
+     "format": "hybrid",
+     "exclude": false
+    }
+   ],
+   "application": null,
+   "viewed": false,
+   "company": {
+    "id": null,
+    "name": "TradingView",
+    "logotype": "42a31fd0-a6ab-4572-8d79-84d40883cce7.png",
+    "url": "/companies/02R3X0v4-tradingview"
+   },
+   "one_day_offer_content": null,
+   "one_day_offer_content_v3": null
+  },
+  {
+   "published_at": "2026-10-07T13:30:24.465828",
+   "is_active": true,
+   "position": "Senior DevOps Engineer",
+   "language": "ru",
+   "type": "web_and_tg",
+   "id": 36671,
+   "offer_type": "vacancy",
+   "cover_letter_required": false,
+   "cover_letter_placeholder": null,
+   "source": "manual",
+   "incognito_publication": false,
+   "salary_description": "4 000 —‍ 5 000 €/‍мес на руки",
+   "salary_hidden": false,
+   "salary_display_from": 4000,
+   "salary_display_to": 5000,
+   "salary_currency": "EUR",
+   "salary_taxes": "net",
+   "salary_is_total": false,
+   "salary_by_our_version": false,
+   "salary_hidden_variant": null,
+   "offer_description": "<b>Что делать:</b> Поддерживать и развивать Kubernetes-кластеры, разворачивать тестовые среды и стенды в Kubernetes, контейнеризировать приложения и настраивать для них CI/CD.\n\n<b>О компании:</b> Data Driven Lab — это международная IT-компания с головным офисом в Белграде, занимающаяся разработкой продуктов для различных сфер бизнеса, таких как финтех, эдтех и аналитика. В настоящее время продукты компании представлены в 150 странах мира.",
+   "skills_objects": [
+    {
+     "name": "Kubernetes",
+     "slug": "kubernetes",
+     "is_custom": false
+    },
+    {
+     "name": "Ansible",
+     "slug": "ansible",
+     "is_custom": false
+    },
+    {
+     "name": "Terraform",
+     "slug": "terraform",
+     "is_custom": false
+    },
+    {
+     "name": "Google Cloud Platform",
+     "slug": "google cloud platform",
+     "is_custom": false
+    },
+    {
+     "name": "PostgreSQL",
+     "slug": "postgresql",
+     "is_custom": false
+    },
+    {
+     "name": "Linux",
+     "slug": "linux",
+     "is_custom": false
+    },
+    {
+     "name": "GitOps",
+     "slug": "gitops",
+     "is_custom": false
+    },
+    {
+     "name": "CI/CD",
+     "slug": "ci/cd",
+     "is_custom": false
+    },
+    {
+     "name": "Docker",
+     "slug": "docker",
+     "is_custom": false
+    },
+    {
+     "name": "Helm",
+     "slug": "helm",
+     "is_custom": false
+    }
+   ],
+   "url": "/vacancies/36671-senior-devops-engineer",
+   "description_html": null,
+   "english_level": {
+    "name": "B1 — Intermediate",
+    "vacancy_description": "Свободно общаетесь с коллегами о работе, если нет совсем сложных тем"
+   },
+   "location_requirements": [
+    {
+     "location_id": "_cu-world",
+     "format": "remote",
+     "exclude": false,
+     "ancestors": [
+      "_cu-world"
+     ],
+     "metros": [],
+     "city": "Весь мир",
+     "country": "Весь мир"
+    }
+   ],
+   "location_items": [
+    {
+     "label": "Весь мир",
+     "format": "remote",
+     "exclude": false
+    }
+   ],
+   "application": null,
+   "viewed": false,
+   "company": {
+    "id": null,
+    "name": "Data Driven Lab",
+    "logotype": "9eb4672f-a586-434d-b87d-99e515ef1479.png",
+    "url": "/companies/bMvr8wlO-data-driven-lab"
+   },
+   "one_day_offer_content": null,
+   "one_day_offer_content_v3": null
+  },
+  {
+   "published_at": "2026-10-07T11:50:12.758132",
+   "is_active": true,
+   "position": "Руководитель направления разработки 1С ЗУП (ООО \"РСХБ-Интех\")",
+   "language": "ru",
+   "type": "only_web",
+   "id": 36670,
+   "offer_type": "vacancy",
+   "cover_letter_required": false,
+   "cover_letter_placeholder": null,
+   "source": "hh_import",
+   "incognito_publication": false,
+   "salary_description": "250 000 —‍ 450 000 ₽/‍мес до налогов",
+   "salary_hidden": false,
+   "salary_display_from": 250000,
+   "salary_display_to": 450000,
+   "salary_currency": "RUB",
+   "salary_taxes": "gross",
+   "salary_is_total": false,
+   "salary_by_our_version": false,
+   "salary_hidden_variant": null,
+   "offer_description": "<b>Что делать:</b> Лидировать команду 1С и распределять задачи, взаимодействовать с бизнес-заказчиками и верифицировать требования, разрабатывать и согласовывать архитектурные решения.\n\n<b>О компании:</b> РСХБ-Интех — аккредитованная IT-компания, разрабатывающая новые банковские продукты Россельхозбанка и улучшающая текущие. Сервисы компании помогают миллионам клиентов удалённо пользоваться банковскими услугами, оформлять карты, брать кредиты, инвестировать и вести финансовые дела агропредпредпр",
+   "skills_objects": [
+    {
+     "name": "Git",
+     "slug": "git",
+     "is_custom": false
+    },
+    {
+     "name": "Jira",
+     "slug": "jira",
+     "is_custom": false
+    },
+    {
+     "name": "Confluence",
+     "slug": "confluence",
+     "is_custom": false
+    },
+    {
+     "name": "Онбординг",
+     "slug": "онбординг",
+     "is_custom": false
+    },
+    {
+     "name": "Управление Командой",
+     "slug": "управление командой",
+     "is_custom": false
+    },
+    {
+     "name": "Hr",
+     "slug": "hr",
+     "is_custom": false
+    },
+    {
+     "name": "Human Resources",
+     "slug": "human resources",
+     "is_custom": false
+    },
+    {
+     "name": "Onboarding",
+     "slug": "onboarding",
+     "is_custom": false
+    }
+   ],
+   "url": "/vacancies/36670-rukovoditel-napravleniia-razrabotki-1s-zup-ooo",
+   "description_html": null,
+   "english_level": null,
+   "location_requirements": [
+    {
+     "location_id": "moscow__mo__russia",
+     "format": "hybrid",
+     "exclude": false,
+     "ancestors": [
+      "moscow",
+      "mo__russia",
+      "russia",
+      "_cu-europe",
+      "_cu-emea",
+      "_cu-world"
+     ],
+     "metros": [
+      "Коньково",
+      "Теплый Стан"
+     ],
+     "city": "Москва",
+     "country": "Россия"
+    }
+   ],
+   "location_items": [
+    {
+     "label": "Москва (Коньково)",
+     "format": "hybrid",
+     "exclude": false
+    }
+   ],
+   "application": null,
+   "viewed": false,
+   "company": {
+    "id": null,
+    "name": "РСХБ-Интех",
+    "logotype": "466e5c26-00fd-4af0-918c-eb6b665fd3b9.png",
+    "url": "/companies/N0l40Ol8-rskhb-intekh"
+   },
+   "one_day_offer_content": null,
+   "one_day_offer_content_v3": null
+  }
+ ]
+}

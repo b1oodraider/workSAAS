@@ -109,7 +109,9 @@ def test_telegram_channel_page_classifies_posts():
 
 
 async def test_telegram_source_without_channels_returns_nothing():
-    assert await TelegramChannelsSource(SourceConfig()).search(SearchQuery(text="x"), 10) == []
+    # `channels = []` turns the source off; without the option the default list is used.
+    assert await TelegramChannelsSource(SourceConfig(options={"channels": []})).search(SearchQuery(text="x"), 10) == []
+    assert "pydevjob" in TelegramChannelsSource(SourceConfig())._channels()
 
 
 def test_generic_jsonld_import():

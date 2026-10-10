@@ -13,6 +13,7 @@ FEATURE = register(
         task=LLMTask(name="tailor_resume", version="2", output=TailoredResume,
                      template_dir=feature_dir(__file__), max_tokens=10000),
         context_builder=lambda s, uid, r, v, p: pair_context(s, uid, r, v, "match"),
+        employer_facing=True,
         order=55,
         group="more",
     )

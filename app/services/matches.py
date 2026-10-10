@@ -11,13 +11,14 @@ OPEN_STATUSES = (UserVacancyStatus.new.value, UserVacancyStatus.saved.value)
 
 
 def top_matches(s: Session, user_id: int, *, limit: int | None = None, min_score: float | None = None,
-                unnotified: bool = False) -> list[tuple[UserVacancy, Vacancy, Analysis]]:
-    """Open (new/saved) vacancies with their latest match analysis, best first."""
-    latest = (
-        select(Analysis.vacancy_id, func.max(Analysis.id).label("aid"))
-        .where(Analysis.user_id == user_id, Analysis.kind == "match")
-        .group_by(Analysis.vacancy_id).subquery()
-    )
+                unnotified: bool = False, resume_id: int | None = None,
+                ) -> list[tuple[UserVacancy, Vacancy, Analysis]]:
+    """Open (new/saved) vacancies with their latest match analysis (for one resume if given), best first."""
+    latest_q = select(Analysis.vacancy_id, func.max(Analysis.id).label("aid")).where(
+        Analysis.user_id == user_id, Analysis.kind == "match")
+    if resume_id:
+        latest_q = latest_q.where(Analysis.resume_id == resume_id)
+    latest = latest_q.group_by(Analysis.vacancy_id).subquery()
     q = (
         select(UserVacancy, Vacancy, Analysis)
         .join(Vacancy, Vacancy.id == UserVacancy.vacancy_id)

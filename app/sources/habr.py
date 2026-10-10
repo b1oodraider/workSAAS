@@ -95,7 +95,7 @@ class HabrSource(JobSource):
                 params["currency"] = "RUR"
             data = await fetch_json(f"{SITE}/api/frontend/vacancies", params=params,
                                     use_proxy=self.cfg.use_proxy, source=self.title,
-                                    min_interval=float(self.cfg.options.get("min_interval", 1.5)))
+                                    min_interval=self.opt_float("min_interval", 1.5, floor=1.0))
             items = data.get("list") if isinstance(data, dict) else None
             if not items:
                 break
@@ -108,7 +108,7 @@ class HabrSource(JobSource):
 
     async def fetch(self, external_id: str) -> VacancyDraft | None:
         fetcher = make_fetcher(self.cfg.options.get("fetcher", "auto"), use_proxy=self.cfg.use_proxy,
-                               min_interval=float(self.cfg.options.get("min_interval", 1.5)))
+                               min_interval=self.opt_float("min_interval", 1.5, floor=1.0))
         try:
             page = await fetcher.get(f"{SITE}/vacancies/{external_id}")
         finally:

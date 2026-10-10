@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import RedirectResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.models import SavedSearch
+from app.services import criteria as criteria_svc
 from app.services import resumes as resume_svc
 from app.services import search as search_svc
 from app.services.errors import ValidationFailed
@@ -44,12 +45,12 @@ def _list(request: Request, user: CurrentUser, s: Session, form=None):
 
 
 @router.get("")
-def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     return _list(request, user, s)
 
 
 @router.post("")
-async def create(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+async def create(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     form = await request.form()
     try:
         salary = str(form.get("salary_min", "")).strip()
@@ -80,16 +81,32 @@ async def create(request: Request, user: CurrentUser = Depends(current_user), s:
 
 @router.get("/{search_id}")
 def detail(search_id: int, request: Request, hidden: int = 0,
-           user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+           user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     search = search_svc.get_owned(s, user.id, search_id)
     items = search_svc.results(s, user.id, search_id, include_hidden=bool(hidden))
     resume = resume_svc.get_owned(s, user.id, search.resume_id)
+    crit = criteria_svc.load(resume.criteria)
     return render(request, "searches/detail.html", search=search, items=items, resume=resume,
-                  statuses=STATUS_LABELS, experience=EXPERIENCE, hidden=hidden)
+                  statuses=STATUS_LABELS, experience=EXPERIENCE, hidden=hidden,
+                  full_match_min=get_settings().matching.full_match_min,
+                  hide_reasons=search_svc.HIDE_REASONS,
+                  crit_missing=criteria_svc.missing(crit), crit_limits=criteria_svc.limits(crit))
+
+
+@router.post("/{search_id}/exclusions/remove")
+def remove_exclusion(search_id: int, request: Request, kind: str = Form(...), value: str = Form(""),
+                     user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
+    try:
+        search_svc.remove_exclusion(s, user.id, search_id, kind, value)
+        flash(request, "Готово. Такие вакансии снова появятся при следующем запуске поиска; "
+                       "уже скрытые — в «Показать скрытые».")
+    except ValidationFailed as exc:
+        flash(request, str(exc), "error")
+    return RedirectResponse(f"/searches/{search_id}", status_code=303)
 
 
 @router.post("/{search_id}/run")
-def run(search_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def run(search_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     search_svc.get_owned(s, user.id, search_id)
     job_id = search_svc.enqueue_search_run(search_id, user.id)
     return RedirectResponse(f"/jobs/{job_id}", status_code=303)
@@ -97,7 +114,7 @@ def run(search_id: int, user: CurrentUser = Depends(current_user), s: Session = 
 
 @router.post("/{search_id}/delete")
 def delete(search_id: int, request: Request, user: CurrentUser = Depends(current_user),
-           s: Session = Depends(db)):
+           s: Session = Depends(db, scope="function")):
     s.delete(search_svc.get_owned(s, user.id, search_id))
     flash(request, "Поиск удалён")
     return RedirectResponse("/searches", status_code=303)

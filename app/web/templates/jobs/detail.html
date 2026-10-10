@@ -7,7 +7,9 @@
      data-job-finished="{{ children.get('done', 0) + children.get('failed', 0) }}"{% endif %}>
   <p>Статус: <b class="status-{{ job.status.value }}">{{ {"queued":"в очереди","running":"выполняется","done":"готово","failed":"ошибка"}[job.status.value] }}</b>
     {% if active %}<span class="spinner"></span>{% endif %}</p>
-  {% if job.status.value in ("queued", "running") %}
+  {% if job.status.value == "queued" and job.run_after %}
+    <p class="muted">Не получилось с первого раза — попробуем ещё раз автоматически около {{ job.run_after|dt }}. Страница обновится сама.</p>
+  {% elif job.status.value in ("queued", "running") %}
     <p class="muted">Обычно 10–60 секунд. Страница обновится сама.</p>
   {% endif %}
   {% if job.error %}<div class="flash flash-error">{{ job.error }}</div>{% endif %}

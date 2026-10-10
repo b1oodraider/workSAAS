@@ -15,7 +15,7 @@ router = APIRouter()
 
 
 @router.get("/")
-def home(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def home(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     me = s.get(User, user.id)
     has_resume = s.scalar(select(func.count(Resume.id)).where(Resume.user_id == user.id)) > 0
     has_search = s.scalar(select(func.count(SavedSearch.id)).where(SavedSearch.user_id == user.id)) > 0

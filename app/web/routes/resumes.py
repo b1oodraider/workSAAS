@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import RedirectResponse
@@ -9,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.features import features_for
 from app.models import Analysis, SavedSearch
+from app.services import criteria as criteria_svc
 from app.services import resumes as resume_svc
 from app.services.errors import ValidationFailed
 from app.web.deps import CurrentUser, current_user, db, form_fields
@@ -18,7 +21,7 @@ router = APIRouter(prefix="/resumes")
 
 
 @router.get("")
-def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def list_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     return render(request, "resumes/list.html", resumes=resume_svc.list_for_user(s, user.id))
 
 
@@ -30,7 +33,7 @@ async def create(
     preferences: str = Form(""),
     file: UploadFile | None = File(None),
     user: CurrentUser = Depends(current_user),
-    s: Session = Depends(db),
+    s: Session = Depends(db, scope="function"),
 ):
     data = filename = None
     if file is not None and file.filename:
@@ -54,7 +57,7 @@ async def create(
 
 @router.get("/{resume_id}")
 def detail(resume_id: int, request: Request, user: CurrentUser = Depends(current_user),
-           s: Session = Depends(db)):
+           s: Session = Depends(db, scope="function")):
     resume = resume_svc.get_owned(s, user.id, resume_id)
     analyses = list(s.scalars(
         select(Analysis).where(Analysis.user_id == user.id, Analysis.resume_id == resume.id,
@@ -62,16 +65,55 @@ def detail(resume_id: int, request: Request, user: CurrentUser = Depends(current
         .order_by(Analysis.id.desc())
     ))
     searches = list(s.scalars(select(SavedSearch).where(SavedSearch.resume_id == resume.id)))
+    crit = criteria_svc.load(resume.criteria)
     return render(
         request, "resumes/detail.html", resume=resume, analyses=analyses, searches=searches,
         features=[(f, form_fields(f.params_model)) for f in features_for("resume")],
+        crit=crit, crit_missing=criteria_svc.missing(crit), crit_labels=criteria_svc.LABELS,
     )
+
+
+MULTI = ("work_formats", "employment", "contracts", "grades")
+_MONEY_JUNK = re.compile(r"[\s.,_'₽$€£₸]|руб\.?|р\.", re.I)
+
+
+def _money_input(raw: str) -> int | None:
+    """"250 000 ₽", "250000", "250к" -> 250000; nonsense -> a form error, not a silent None."""
+    text = _MONEY_JUNK.sub("", raw.strip().lower())
+    if not text:
+        return None
+    thousands = text[-1] in ("k", "к")
+    if thousands:
+        text = text[:-1]
+    if not (text.isascii() and text.isdigit()) or len(text) > 9:
+        raise ValidationFailed("Зарплату укажите числом, например 250000")
+    return int(text) * (1000 if thousands else 1)
+FLAGS = ("salary_net", "stretch_up", "adjacent_roles")
+
+
+@router.post("/{resume_id}/criteria")
+async def save_criteria(resume_id: int, request: Request, user: CurrentUser = Depends(current_user),
+                        s: Session = Depends(db, scope="function")):
+    form = await request.form()
+    data: dict = {k: str(v) for k, v in form.items() if k not in MULTI and k not in FLAGS}
+    for key in MULTI:
+        data[key] = form.getlist(key)
+    for key in FLAGS:
+        data[key] = form.get(key) == "on"
+    try:
+        for key in ("salary_min", "salary_desired"):
+            data[key] = _money_input(data.get(key, ""))
+        criteria_svc.save(s, user.id, resume_id, data)
+        flash(request, "Условия поиска сохранены — учтутся при следующем подборе")
+    except ValidationFailed as exc:
+        flash(request, str(exc), "error")
+    return RedirectResponse(f"/resumes/{resume_id}#criteria", status_code=303)
 
 
 @router.post("/{resume_id}/edit")
 def edit(resume_id: int, request: Request, title: str = Form(""), text: str = Form(...),
          preferences: str = Form(""), user: CurrentUser = Depends(current_user),
-         s: Session = Depends(db)):
+         s: Session = Depends(db, scope="function")):
     try:
         resume_svc.update(s, user.id, resume_id, title=title, text=text, preferences=preferences)
         flash(request, "Сохранено")
@@ -82,7 +124,7 @@ def edit(resume_id: int, request: Request, title: str = Form(""), text: str = Fo
 
 @router.post("/{resume_id}/delete")
 def delete(resume_id: int, request: Request, user: CurrentUser = Depends(current_user),
-           s: Session = Depends(db)):
+           s: Session = Depends(db, scope="function")):
     resume_svc.delete(s, user.id, resume_id)
     flash(request, "Резюме удалено")
     return RedirectResponse("/resumes", status_code=303)

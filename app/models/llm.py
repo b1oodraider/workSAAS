@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, String
+from sqlalchemy import JSON, Boolean, Float, ForeignKey, Integer, LargeBinary, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.db import Base, TimestampMixin
@@ -14,6 +14,20 @@ class LLMCache(TimestampMixin, Base):
     provider: Mapped[str] = mapped_column(String(64))
     model: Mapped[str] = mapped_column(String(128))
     output: Mapped[dict] = mapped_column(JSON)
+
+
+class EmbeddingCache(TimestampMixin, Base):
+    """Vector of a text (resume or vacancy), shared by all users: key = hash(model, text).
+
+    ``vector`` is unit length, packed as little-endian float16 (half the size of float32 and
+    precise enough for cosine similarity)."""
+
+    __tablename__ = "embedding_cache"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    model: Mapped[str] = mapped_column(String(128))
+    dims: Mapped[int] = mapped_column(Integer)
+    vector: Mapped[bytes] = mapped_column(LargeBinary)
 
 
 class LLMUsage(TimestampMixin, Base):

@@ -14,7 +14,7 @@ router = APIRouter(prefix="/usage")
 
 
 @router.get("")
-def usage_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def usage_page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     since = month_start()
     cols = (
         LLMUsage.task,

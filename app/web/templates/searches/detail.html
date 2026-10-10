@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_macros.html" import hide_form %}
 {% block content %}
 <h1>{{ search.name }}</h1>
 <p class="muted">Резюме: <a href="/resumes/{{ resume.id }}">{{ resume.title }}</a> · источники: {{ search.sources|join(", ") }}
@@ -11,17 +12,42 @@
   <form method="post" action="/searches/{{ search.id }}/delete" onsubmit="return confirm('Удалить поиск? Вакансии останутся.')">
     <button class="danger btn-small">Удалить поиск</button></form>
 </div>
+{% if crit_missing|length >= 3 %}
+<div class="card hint">Подбор будет точнее, если указать в резюме <a href="/resumes/{{ resume.id }}#criteria">условия поиска</a>:
+  {{ crit_missing[:3]|map("lower")|join("; ") }}…</div>
+{% endif %}
+{% if crit_limits %}
+<p class="muted">Из <a href="/resumes/{{ resume.id }}#criteria">условий резюме</a> ко всем поискам применяется:
+  {{ crit_limits|join("; ") }}. Изменить — на странице резюме.</p>
+{% endif %}
+{% set f = search.filters or {} %}
+{% if f.exclude_companies or f.exclude_title_words or f.exclude_words or f.salary_min or f.remote_only %}
+<div class="card"><h3>Что убрано из подбора</h3>
+  <p class="muted">Нажмите ✕, чтобы такие вакансии снова попадали в подбор.</p>
+  {% macro chip(kind, value, label) %}<form method="post" action="/searches/{{ search.id }}/exclusions/remove" style="display:inline">
+    <input type="hidden" name="kind" value="{{ kind }}"><input type="hidden" name="value" value="{{ value }}">
+    <span class="tag">{{ label }} <button class="btn-small secondary" title="Убрать" aria-label="Убрать: {{ label }}">✕</button></span></form>{% endmacro %}
+  {% for c in f.exclude_companies or [] %}{{ chip("exclude_companies", c, "компания: " ~ c) }}{% endfor %}
+  {% for w in f.exclude_title_words or [] %}{{ chip("exclude_title_words", w, "в названии: " ~ w) }}{% endfor %}
+  {% for w in f.exclude_words or [] %}{{ chip("exclude_words", w, "в тексте: " ~ w) }}{% endfor %}
+  {% if f.salary_min %}{{ chip("salary_min", "", "зарплата от " ~ f.salary_min) }}{% endif %}
+  {% if f.remote_only %}{{ chip("remote_only", "", "только удалёнка") }}{% endif %}
+</div>
+{% endif %}
 <div class="card">
 {% if items %}
 <table>
-  <tr><th>ИИ</th><th>Префильтр</th><th>Вакансия</th><th>Зарплата</th><th>Статус</th></tr>
+  {% set show_sem = items|selectattr("uv.semantic_score", "ne", none)|list %}
+  <tr><th>ИИ</th><th class="hide-mobile" title="Совпадение навыков и должности по словам">Слова</th>{% if show_sem %}<th class="hide-mobile" title="Сходство с резюме по смыслу (находит вакансии на другом языке и со смежными названиями)">Смысл</th>{% endif %}<th>Вакансия</th><th>Зарплата</th><th>Статус</th></tr>
   {% for it in items %}{% set v = it.vacancy %}{% set m = it.match %}
   <tr>
-    <td>{% if m %}<a href="/analyses/{{ m.id }}"><span class="score {{ m.score|score_class }}">{{ m.score|int }}</span></a>{% else %}<span class="muted">—</span>{% endif %}</td>
-    <td class="muted">{{ (it.uv.prefilter_score or 0)|round|int }}</td>
+    <td>{% if m %}<a href="/analyses/{{ m.id }}"{% if m.kind == "match_quick" %} title="Быстрая оценка"{% endif %}><span class="score {{ m.score|score_class }}">{% if m.kind == "match_quick" %}≈{% endif %}{{ m.score|int }}</span></a>{% else %}<span class="muted">—</span>{% endif %}</td>
+    <td class="muted hide-mobile">{{ (it.uv.prefilter_score or 0)|round|int }}</td>
+    {% if show_sem %}<td class="muted hide-mobile">{% if it.uv.semantic_score is not none %}{{ it.uv.semantic_score|round|int }}{% else %}—{% endif %}</td>{% endif %}
     <td><a href="/vacancies/{{ v.id }}">{{ v.title }}</a>
         <div class="muted">{{ v.company or "" }}{% if v.location %} · {{ v.location }}{% endif %}{% if v.remote %} · удалённо{% endif %}</div>
-        {% if m %}<div>{{ m.output.summary }}</div>{% endif %}</td>
+        {% if m %}<div>{{ m.output.summary }}</div>{% endif %}
+        {% if it.uv.status.value in ("new", "saved") %}{{ hide_form(v.id, "/searches/" ~ search.id, hide_reasons) }}{% endif %}</td>
     <td>{{ v|money }}</td>
     <td>
       <form method="post" action="/vacancies/{{ v.id }}/status">
@@ -34,6 +60,9 @@
   </tr>
   {% endfor %}
 </table>
+<p class="muted">ИИ — насколько вакансия подходит резюме, по мнению ИИ. ≈ — быстрая оценка: подробный разбор делается сам
+  для вакансий от {{ full_match_min|int }} баллов, для остальных — кнопкой «Соответствие резюме» на странице вакансии.
+  Слова — сколько ключевых слов резюме нашлось в вакансии (0–100).</p>
 {% else %}<p class="muted">Пока пусто. Если поиск только что запущен — загляните в <a href="/jobs">задачи</a>.</p>{% endif %}
 </div>
 {% endblock %}

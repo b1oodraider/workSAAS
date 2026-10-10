@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ValidationError
 
@@ -16,6 +16,12 @@ class LLMError(UserError):
     """Non-retryable LLM failure (bad config, bad request, auth)."""
 
     retryable = False
+    # Set when the provider answered (and billed) but the answer is unusable: the gateway
+    # charges it to the budget, otherwise retries of such calls spend money invisibly.
+    usage: TokenUsage | None = None
+    # The provider's own words (response body, SDK message) for logs and admins. Never part of
+    # str(exc): that is shown to the user and must not echo third-party text.
+    detail: str = ""
 
 
 class LLMUnavailable(LLMError):
@@ -95,6 +101,22 @@ class LLMProvider(Protocol):
     async def generate(self, req: LLMRequest) -> LLMResponse: ...
 
 
+@dataclass
+class EmbeddingResponse:
+    vectors: list[list[float]]
+    model: str
+    usage: TokenUsage = field(default_factory=TokenUsage)
+
+
+@runtime_checkable
+class EmbeddingProvider(Protocol):
+    """Optional second capability of a provider (openai_compat, fake): texts -> vectors."""
+
+    name: str
+
+    async def embed(self, model: str, texts: list[str]) -> EmbeddingResponse: ...
+
+
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.S)
 
 
@@ -118,4 +140,12 @@ def parse_json_output(text: str, output_type: type[BaseModel]) -> dict[str, Any]
     try:
         return output_type.model_validate(raw).model_dump(mode="json")
     except ValidationError as exc:
+        # Some models (GigaChat) answer in the schema's own shape: {"properties": {<the data>},
+        # "required": [...], "type": "object"}. Unwrap it; if that is not valid either, report the original error.
+        inner = raw.get("properties") if isinstance(raw, dict) and raw.get("type") == "object" else None
+        if isinstance(inner, dict):
+            try:
+                return output_type.model_validate(inner).model_dump(mode="json")
+            except ValidationError:
+                pass
         raise LLMInvalidOutput(f"Output does not match schema: {exc}") from exc

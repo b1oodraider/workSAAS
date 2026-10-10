@@ -14,7 +14,7 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from app.core.text import html_to_text
-from app.sources.base import VacancyDraft, as_str, safe_map
+from app.sources.base import VacancyDraft, as_str, naive_utc, safe_map
 
 
 def walk(obj: Any) -> Iterator[dict[str, Any]]:
@@ -44,12 +44,12 @@ def parse_date(value: Any) -> datetime | None:
     if not isinstance(value, str) or not value:
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00")).replace(tzinfo=None)
+        return naive_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
     except ValueError:
         pass
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%d"):
         try:
-            return datetime.strptime(value, fmt).replace(tzinfo=None)
+            return naive_utc(datetime.strptime(value, fmt))
         except ValueError:
             continue
     return None

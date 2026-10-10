@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.features import features_for
 from app.models import STATUS_LABELS, Analysis, UserVacancy, UserVacancyStatus, Vacancy
 from app.services import resumes as resume_svc
+from app.services import search as search_svc
 from app.services import vacancies as vacancy_svc
 from app.services.errors import ValidationFailed
 from app.web.deps import CurrentUser, current_user, db, form_fields, safe_path
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/vacancies")
 
 @router.get("")
 def list_page(request: Request, status: str = "", q: str = "",
-              user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+              user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     query = select(UserVacancy).join(Vacancy).where(UserVacancy.user_id == user.id)
     if status:
         query = query.where(UserVacancy.status == status)
@@ -36,7 +37,7 @@ def list_page(request: Request, status: str = "", q: str = "",
 @router.post("")
 def create(request: Request, mode: str = Form("text"), title: str = Form(""),
            company: str = Form(""), url: str = Form(""), text: str = Form(""),
-           user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+           user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     try:
         if mode == "url":
             job_id = vacancy_svc.enqueue_import(user.id, url.strip())
@@ -51,7 +52,7 @@ def create(request: Request, mode: str = Form("text"), title: str = Form(""),
 
 @router.get("/{vacancy_id}")
 def detail(vacancy_id: int, request: Request, user: CurrentUser = Depends(current_user),
-           s: Session = Depends(db)):
+           s: Session = Depends(db, scope="function")):
     vacancy, uv = vacancy_svc.get_for_user(s, user.id, vacancy_id)
     analyses = list(s.scalars(
         select(Analysis).where(Analysis.user_id == user.id, Analysis.vacancy_id == vacancy.id)
@@ -59,16 +60,26 @@ def detail(vacancy_id: int, request: Request, user: CurrentUser = Depends(curren
     ))
     return render(
         request, "vacancies/detail.html", vacancy=vacancy, uv=uv, analyses=analyses,
-        resumes=resume_svc.list_for_user(s, user.id), statuses=STATUS_LABELS,
+        resumes=resume_svc.list_for_user(s, user.id), statuses=STATUS_LABELS, hide_reasons=search_svc.HIDE_REASONS,
         vacancy_features=[(f, form_fields(f.params_model)) for f in features_for("vacancy")],
         pair_features=[(f, form_fields(f.params_model)) for f in features_for("resume_vacancy")],
     )
 
 
+@router.post("/{vacancy_id}/hide")
+def hide(vacancy_id: int, request: Request, reason: str = Form(""), word: str = Form(""), back: str = Form(""),
+         user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
+    try:
+        flash(request, search_svc.hide_with_reason(s, user.id, vacancy_id, reason, word))
+    except ValidationFailed as exc:
+        flash(request, str(exc), "error")
+    return RedirectResponse(safe_path(back, f"/vacancies/{vacancy_id}"), status_code=303)
+
+
 @router.post("/{vacancy_id}/status")
 def set_status(vacancy_id: int, request: Request, status: str = Form(...),
                notes: str | None = Form(None), back: str = Form(""),
-               user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+               user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     try:
         vacancy_svc.set_status(s, user.id, vacancy_id, status, notes)
     except ValidationFailed as exc:

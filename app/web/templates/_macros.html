@@ -58,3 +58,14 @@
   {% endif %}
 </div>
 {% endmacro %}
+
+{% macro hide_form(vacancy_id, back, reasons) %}
+<details class="hide-form"><summary>Не подходит?</summary>
+<form method="post" action="/vacancies/{{ vacancy_id }}/hide">
+  <input type="hidden" name="back" value="{{ back }}">
+  <select name="reason" onchange="this.form.word.hidden = this.value !== 'word'">{% for k, label in reasons.items() %}<option value="{{ k }}">{{ label }}</option>{% endfor %}</select>
+  <input type="text" name="word" maxlength="50" hidden placeholder="например: 1С, продажи">
+  <button class="btn-small secondary">Скрыть</button>
+  <div class="muted">Причина поправит поиск, который нашёл вакансию, — похожие больше не попадутся. Убрать это можно на странице поиска.</div>
+</form></details>
+{% endmacro %}

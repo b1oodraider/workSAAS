@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_macros.html" import feature_form, analysis_card %}
+{% from "_macros.html" import feature_form, analysis_card, hide_form %}
 {% block content %}
 <h1>{{ vacancy.title }}</h1>
 <p class="muted">
@@ -17,6 +17,7 @@
       <button class="btn-small">Сохранить статус</button>
     </form>
     {% if uv.applied_at %}<p class="muted">Отклик: {{ uv.applied_at|dt }}</p>{% endif %}
+    {% if uv.status.value in ("new", "saved") and uv.search_id %}<p>{{ hide_form(vacancy.id, "/vacancies/" ~ vacancy.id, hide_reasons) }}</p>{% endif %}
     {% set hint = {"interview": ("interview_prep", "Скоро собеседование — подготовьтесь:"),
                    "offer": ("offer_negotiation", "Есть оффер — разберите условия перед ответом:"),
                    "applied": ("follow_up", "Нет ответа неделю? Напомните о себе:")}.get(uv.status.value) %}

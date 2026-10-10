@@ -34,10 +34,12 @@ from app.apply import ApplyRequest, applier_for, supported_sources
 from app.core.config import get_settings
 from app.core.db import from_local, session_scope, to_local, utcnow
 from app.core.errors import NotFound, UserError, ValidationFailed
+from app.core.http import chromium_slot
 from app.features import get_feature
 from app.jobs import JobContext, enqueue, job_handler
 from app.jobs.scheduler import periodic
-from app.llm import BudgetExceeded
+from app.llm import BudgetExceeded, LLMUnavailable
+from app.llm.tasks import DATA_TAGS
 from app.models import (
     ACTIVE_APPLICATION_STATUSES,
     Analysis,
@@ -67,10 +69,11 @@ MAX_LETTER_CHARS = 2500
 # Keys read from other features' outputs (cross-feature data comes from the analyses table).
 MATCH_RECOMMENDATION = "recommendation"
 REVIEW_RED_FLAGS, RED_FLAG_SEVERITY = "red_flags", "severity"
-LETTER_BODY = "body"
+LETTER_BODY, LETTER_WARNINGS = "body", "warnings"
 
-# Only one automation browser per process: several accounts applying at the same second
-# from one IP is an easy pattern for the site to link.
+# Only one application in flight per process: several accounts applying at the same second
+# from one IP is an easy pattern for the site to link. (Chromium itself is limited to one per
+# process by app.core.http.chromium_slot, shared with browser fetchers.)
 _BROWSER_LOCK = asyncio.Lock()
 
 
@@ -177,16 +180,27 @@ def _still_wanted(s: Session, user_id: int, vacancy_id: int) -> bool:
     return status is not None and getattr(status, "value", status) in matches_svc.OPEN_STATUSES
 
 
+def _copy_open(s: Session, user_id: int, vacancy_id: int) -> bool:
+    status = s.scalar(select(UserVacancy.status).where(UserVacancy.user_id == user_id,
+                                                       UserVacancy.vacancy_id == vacancy_id))
+    return status is None or getattr(status, "value", status) in matches_svc.OPEN_STATUSES
+
+
 def candidates(s: Session, user_id: int, cfg: AutoApplySettings) -> list[tuple[Vacancy, Analysis]]:
     """Best open matches that could be auto-applied, best first."""
     taken = set(s.scalars(select(Application.vacancy_id).where(Application.user_id == user_id)))
     sources = set(supported_sources())
+    floor = get_settings().apply.auto_min_prefilter
     result = []
-    for _uv, v, a in matches_svc.top_matches(s, user_id, min_score=cfg.min_score):
-        if v.id in taken or v.source not in sources:
+    # A newer match from another resume must not hide this resume's qualifying match.
+    for uv, v, a in matches_svc.top_matches(s, user_id, min_score=cfg.min_score, resume_id=cfg.resume_id):
+        target = vacancy_svc.copy_on(s, v, sources)
+        if v.id in taken or target is None or target.id in taken:
             continue
-        if cfg.resume_id and a.resume_id != cfg.resume_id:
-            continue
+        if target.id != v.id and not _copy_open(s, user_id, target.id):
+            continue  # the site copy is already applied to / hidden in the tracker
+        if cfg.mode == "auto" and (uv.prefilter_score or 0) < floor:
+            continue  # unasked sending needs more than the LLM's word for it
         if (a.output or {}).get(MATCH_RECOMMENDATION) == "skip":
             continue
         if _has_serious_red_flags(s, user_id, v.id):
@@ -225,11 +239,40 @@ def plan(s: Session, user_id: int) -> list[int]:
 _URL_RE = re.compile(r"(?:https?://|www\.|t\.me/)\S+", re.I)
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
 _PHONE_RE = re.compile(r"\+?\d[\d\s()\-]{8,}\d")
-_TAG_RE = re.compile(r"</?(?:resume|vacancy|preferences|user_text|match_analysis)\b", re.I)
+_TAG_RE = re.compile(r"</?(?:" + "|".join(DATA_TAGS) + r")\b", re.I)
 _HANDLE_RE = re.compile(r"(?<![\w.])@[A-Za-z][\w]{4,}")
 _BARE_LINK_RE = re.compile(r"\b[\w-]+(?:\.[\w-]+)*\.(?:ru|com|io|me|org|net|рф|su|info|app|dev)(?:/\S*)?(?![\w.])",
                            re.I)
 _MESSENGER_RE = re.compile(r"\b(?:whats\s?app|вотсап|ватсап|viber|вайбер|телеграм\w*|telegram|скайп|skype)\b", re.I)
+
+
+# The cover_letter prompt tells the model to note in `warnings` any instruction aimed at an AI and any employer
+# question it could not answer from the resume (code word, start date…): such a letter needs the user first.
+# Phrases, not single words: ordinary warnings mention AI, models or "кодовая база" as skills all the time
+# («Требуется опыт с AI/ML — в резюме его нет») and must not hold the letter.
+_AI = r"(?:(?:ИИ|AI)(?!\w)|нейросет|модел)"
+_AI_INSTRUCTION_WARNING_RE = re.compile(
+    "|".join([
+        r"кодов\w*\s+слов",                                # «кодовое слово»
+        rf"(?:инструкц|указани)\w*\s+(?:для|к)\s+{_AI}",   # «инструкция для ИИ»
+        rf"обращ\w*\s+к\s+{_AI}",                          # «текст обращается к нейросети»
+        r"prompt[\s-]*injection|промпт[\s-]*инъекц",       # the model naming the attack itself
+        r"допиш",                                          # «допишите сами»
+        r"вопрос\w*\s+работодател",                        # «вопросы работодателя»
+        r"работодател\w*\s+(?:прос[ия]т|требует)\s+(?:указать|назвать|ответить|начать|написать)",
+        r"прос[ия]т\s+(?:указать|назвать|ответить|начать\s+письмо)",  # «вакансия просит назвать…»
+        r"начать\s+письмо\s+со\s+слов",                    # «начать письмо со слова …»
+    ]),
+    re.I)
+AI_INSTRUCTION_PROBLEM = "модель отметила в вакансии указания для ИИ или вопросы, на которые нужен ваш ответ"
+
+
+def warning_problems(warnings: Any) -> list[str]:
+    """Problems taken from the letter model's own warnings (see _AI_INSTRUCTION_WARNING_RE)."""
+    items = warnings if isinstance(warnings, list) else [warnings] if warnings else []
+    if any(_AI_INSTRUCTION_WARNING_RE.search(str(w)) for w in items):
+        return [AI_INSTRUCTION_PROBLEM]
+    return []
 
 
 def letter_problems(letter: str, resume_text: str) -> list[str]:
@@ -258,7 +301,27 @@ def letter_problems(letter: str, resume_text: str) -> list[str]:
         problems.append("в письме есть номер телефона, которого нет в резюме")
     if _TAG_RE.search(letter):
         problems.append("в письме остались служебные метки")
+    garbled = garbled_words(_HANDLE_RE.sub(" ", without_emails))
+    if garbled:
+        problems.append("текст письма выглядит повреждённым (склеенные слова: " + ", ".join(garbled[:3]) + ")")
     return problems
+
+
+# A model that breaks down glues tokens together: "gRESTfulfilledов", "BootеобщенияеntsSpring",
+# "Kafka'.split_offset". Hyphens, apostrophes and slashes keep normal mixes apart ("Java-разработчик",
+# "outbox'ом"), so a word part with both Cyrillic and Latin letters, or a code fragment, is a red flag.
+_WORD_PART_RE = re.compile(r"[^\s\-–—/'’`«»\"().,;:!?\[\]{}]+")
+_CODE_FRAGMENT_RE = re.compile(r"\b[a-z]+_[a-z]+\b|'\.[a-z]", re.I)
+_CYRILLIC_RE = re.compile(r"[а-яё]", re.I)
+_LATIN_RE = re.compile(r"[a-z]", re.I)
+
+
+def garbled_words(text: str) -> list[str]:
+    """Word parts that look like broken model output; a single mixed word may be a typo, so it takes two
+    (or one code fragment) to call the text broken."""
+    mixed = [w for w in _WORD_PART_RE.findall(text) if _CYRILLIC_RE.search(w) and _LATIN_RE.search(w)]
+    code = [m.group(0) for m in _CODE_FRAGMENT_RE.finditer(text)]
+    return code + mixed if code or len(mixed) >= 2 else []
 
 
 def _active_jobs(s: Session, user_id: int, kind: str) -> list[Job]:
@@ -299,24 +362,36 @@ async def _prepare_job(ctx: JobContext) -> dict:
             with session_scope() as s:
                 pause(s, ctx.user_id, BUDGET_REASON)
             return {"status": "paused", "reason": "budget", "written": written}
-        except UserError as exc:
-            if exc.retryable and not ctx.final_attempt:
+        except Exception as exc:  # noqa: BLE001 - an app that always crashes must not be retried forever
+            retryable = isinstance(exc, UserError) and exc.retryable
+            if retryable and not ctx.final_attempt:
                 raise  # the job queue retries it
+            if not isinstance(exc, UserError):
+                log.exception("letter for application %s crashed", app_id)
             with session_scope() as s:
                 app = s.get(Application, app_id)
-                if app is not None and app.status in (ApplicationStatus.queued, ApplicationStatus.approved):
-                    app.status = ApplicationStatus.failed
-                    app.reason = f"не удалось написать письмо: {exc}"[:1000]
-                    app.notified_at = None
+                if app is None or app.status not in (ApplicationStatus.queued, ApplicationStatus.approved):
+                    continue
+                if isinstance(exc, LLMUnavailable) and app.attempts + 1 < MAX_TRANSIENT_ATTEMPTS:
+                    # A short provider outage must not lose the batch: keep the rest in line,
+                    # the next tick starts a new prepare job.
+                    app.attempts += 1
+                    return {"status": "deferred", "reason": str(exc)[:300], "written": written}
+                app.status = ApplicationStatus.failed
+                reason = exc if isinstance(exc, UserError) else "внутренняя ошибка"
+                app.reason = f"не удалось написать письмо: {reason}"[:1000]
+                app.notified_at = None
             continue
-        letter = str((analysis.output or {}).get(LETTER_BODY, "")).strip()
+        output = analysis.output or {}
+        letter = str(output.get(LETTER_BODY, "")).strip()
         with session_scope() as s:
             app = s.get(Application, app_id)
             if app is None or app.status not in (ApplicationStatus.queued, ApplicationStatus.approved):
                 continue  # cancelled meanwhile
             resume = resume_svc.get_owned(s, ctx.user_id, resume_id) if resume_id else None
             problems = letter_problems(letter, resume.text if resume else "")
-            app.letter = letter
+            problems += warning_problems(output.get(LETTER_WARNINGS))
+            app.letter, app.attempts = letter, 0  # sending gets its own transient retries
             if problems:
                 app.status = ApplicationStatus.review
                 app.reason = "проверьте письмо: " + "; ".join(problems)
@@ -430,7 +505,8 @@ def autoapply_tick(now: datetime | None = None) -> list[int]:
             .where(AutoApplySettings.enabled.is_(True), User.is_active.is_(True))))
         # One application in flight server-wide: jobs never wait for the browser (holding a worker
         # slot) and several accounts never apply from the same IP at the same time.
-        may_send = not _sending_anywhere(s)
+        # A browser search holding Chromium would make the send job wait with a worker slot taken.
+        may_send = not _sending_anywhere(s) and not chromium_slot.busy
     for user_id in user_ids:
         try:
             app_id = _tick_user(user_id, now, may_send=may_send)
@@ -496,7 +572,8 @@ async def _send_job(ctx: JobContext) -> dict:
             app.notified_at = None
             return {"status": "interrupted"}
         cfg = get_config(s, ctx.user_id)
-        vacancy = app.vacancy
+        # The tracked vacancy may be another board's copy: apply on the site we support.
+        vacancy = vacancy_svc.copy_on(s, app.vacancy, set(supported_sources())) or app.vacancy
         applier = applier_for(vacancy.source)
         req = ApplyRequest(user_id=ctx.user_id, source=vacancy.source, external_id=vacancy.external_id,
                            url=vacancy.url, letter=app.letter, site_resume_title=cfg.site_resume_title)
@@ -508,7 +585,8 @@ async def _send_job(ctx: JobContext) -> dict:
     if not req.letter:
         _finish(app_id, back, "", sent_at=None)  # the letter isn't written yet
         return {"status": "waiting"}
-    async with _BROWSER_LOCK:
+    # Chromium may be busy (a browser search): re-check after waiting for it, not before.
+    async with _BROWSER_LOCK, chromium_slot.hold():
         check = _precheck(ctx.user_id, vacancy_id, back)
         if check == "wait":
             _finish(app_id, back, "", sent_at=None)
@@ -564,15 +642,24 @@ def get_owned(s: Session, user_id: int, app_id: int) -> Application:
     return app
 
 
+def _set_status_if(s: Session, app: Application, allowed: tuple[ApplicationStatus, ...], **values: Any) -> bool:
+    """Conditional UPDATE: the scheduler may have claimed the row ("sending") since it was read."""
+    changed = s.execute(update(Application).where(Application.id == app.id, Application.status.in_(allowed))
+                        .values(**values).execution_options(synchronize_session=False)).rowcount
+    s.refresh(app)
+    return bool(changed)
+
+
 def approve(s: Session, user_id: int, app_id: int) -> str:
     """Returns a short human answer for the web flash / Telegram toast."""
     app = get_owned(s, user_id, app_id)
-    if app.status not in (ApplicationStatus.queued, ApplicationStatus.review):
+    waiting = (ApplicationStatus.queued, ApplicationStatus.review)
+    if app.status not in waiting:
         return "Этот отклик уже не ждёт решения"
     if not app.letter:
         return "Письмо ещё пишется — подтвердите, когда оно появится"
-    app.status = ApplicationStatus.approved
-    app.reason = ""
+    if not _set_status_if(s, app, waiting, status=ApplicationStatus.approved, reason=""):
+        return "Этот отклик уже не ждёт решения"
     cfg = get_config(s, user_id)
     if not is_running(cfg):
         return "Подтверждено. Автоотклики сейчас не работают — отправлю, когда вы их продолжите"
@@ -581,9 +668,9 @@ def approve(s: Session, user_id: int, app_id: int) -> str:
 
 def cancel(s: Session, user_id: int, app_id: int) -> str:
     app = get_owned(s, user_id, app_id)
-    if app.status not in (ApplicationStatus.queued, ApplicationStatus.review, ApplicationStatus.approved):
+    waiting = (ApplicationStatus.queued, ApplicationStatus.review, ApplicationStatus.approved)
+    if app.status not in waiting or not _set_status_if(s, app, waiting, status=ApplicationStatus.cancelled):
         return "Этот отклик уже не в очереди"
-    app.status = ApplicationStatus.cancelled
     return "Не откликаемся на эту вакансию"
 
 
@@ -654,6 +741,7 @@ def overview(s: Session, user_id: int) -> dict[str, Any]:
         "idle_reason": idle_reason(s, user_id, readiness),
         "queue": queue,
         "awaiting": sum(1 for a in queue if awaiting_decision(cfg, a)),
+        "auto_min_prefilter": int(get_settings().apply.auto_min_prefilter),
         "history": [a for a in apps if a.status not in ACTIVE_APPLICATION_STATUSES],
         "sent_today": sent_today(s, user_id),
         "daily_limit": daily,

@@ -35,6 +35,7 @@ from app.features import (  # noqa: E402,F401
     interview_prep,
     letter_critic,
     match,
+    match_quick,
     offer_negotiation,
     recruiter_reply,
     resume_profile,

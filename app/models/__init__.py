@@ -8,7 +8,7 @@ from app.models.application import (
     AutoApplySettings,
 )
 from app.models.job import Job, JobStatus
-from app.models.llm import LLMCache, LLMUsage
+from app.models.llm import EmbeddingCache, LLMCache, LLMUsage
 from app.models.resume import Resume
 from app.models.search import SavedSearch
 from app.models.user import TelegramLinkCode, User
@@ -19,6 +19,7 @@ __all__ = [
     "Application",
     "ApplicationStatus",
     "AutoApplySettings",
+    "EmbeddingCache",
     "STATUS_LABELS",
     "Analysis",
     "Job",

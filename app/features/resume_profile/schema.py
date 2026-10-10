@@ -19,6 +19,11 @@ class ResumeProfile(BaseModel):
     roles: list[str] = Field(
         description="2-5 названий должностей без грейда, как в заголовках вакансий: 'Python-разработчик', 'Backend Developer'"
     )
+    adjacent_roles: list[str] = Field(
+        default_factory=list,
+        description="0-5 смежных должностей без грейда, как в заголовках вакансий (1-3 слова); только те, что "
+                    "опираются на задачи/инструменты из опыта; самые близкие первыми; пустой список, если реалистичных нет",
+    )
     skills: list[Skill] = Field(description="core — до 12, secondary — до 15")
     domains: list[str] = Field(description="До 5 отраслей/доменов опыта: финтех, e-commerce, ...")
     work_format: Literal["remote", "hybrid", "office", "any", "unknown"]

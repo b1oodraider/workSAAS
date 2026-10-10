@@ -3,11 +3,12 @@ from pydantic import BaseModel, Field
 from app.features import register
 from app.features.base import AnalysisFeature, feature_dir
 from app.features.resume_review.schema import ResumeReview
+from app.features._shared import SHORT_TEXT_MAX
 from app.llm.tasks import LLMTask
 
 
 class ResumeReviewParams(BaseModel):
-    target_role: str = Field("", title="Целевая роль (необязательно)")
+    target_role: str = Field("", title="Целевая роль (необязательно)", max_length=SHORT_TEXT_MAX)
 
 
 FEATURE = register(

@@ -19,9 +19,9 @@ from typing import Any
 from urllib.parse import urlsplit
 
 from app.apply import sessions
-from app.apply.base import Applier, ApplyRequest, ApplyResult
+from app.apply.base import Applier, ApplyRequest, ApplyResult, SessionExpired, SiteApplication
 from app.core.config import get_settings
-from app.core.http import chromium_launch_options
+from app.core.http import chromium_launch_options, chromium_slot
 
 log = logging.getLogger(__name__)
 
@@ -72,6 +72,24 @@ class HHBrowserApplier(Applier):
             return False, "hh.ru перестал принимать сохранённый вход — войдите заново"
         return True, ""
 
+    def session_ok(self, user_id: int) -> bool:
+        return self.has_session(user_id) and not self._stale_marker(user_id).exists()
+
+    def mark_session_stale(self, user_id: int) -> None:
+        if self.has_session(user_id):
+            self._stale_marker(user_id).touch()
+
+    async def site_applications(self, user_id: int) -> list[SiteApplication] | None:
+        from app.apply.hh_status import fetch_negotiations
+
+        state = self.load_session(user_id)
+        if state is None:
+            raise SessionExpired("сохранённый вход в hh.ru повреждён — войдите заново")
+        cfg = get_settings().apply
+        return await fetch_negotiations(state, base_url=self.base_url,
+                                        item_selector=cfg.hh_selectors.negotiations_item,
+                                        login_selector=cfg.hh_selectors.login_form, use_proxy=cfg.use_proxy)
+
     def _on_site(self, url: str) -> bool:
         host = (urlsplit(url).hostname or "").lower()
         return any(host == d or host.endswith("." + d) for d in self._allowed_hosts)
@@ -92,7 +110,8 @@ class HHBrowserApplier(Applier):
         cfg = get_settings().apply
         url = f"{self.base_url}/vacancy/{req.external_id}"
         try:
-            async with async_playwright() as pw:
+            # One Chromium per process (a search may be running a browser fetcher right now).
+            async with chromium_slot.hold(), async_playwright() as pw:
                 browser = await pw.chromium.launch(**chromium_launch_options(
                     headless=cfg.headless, use_proxy=cfg.use_proxy, executable=cfg.browser_executable))
                 try:
@@ -188,10 +207,13 @@ class HHBrowserApplier(Applier):
         if not await submit.count():
             return ApplyResult("failed", "форма отклика на hh.ru выглядит не так, как ожидалось "
                                          "(нет кнопки отправки) — откликнитесь вручную")
-        await submit.click()
         # From here on the application may have gone out: never report "nothing sent".
         unsure = ApplyResult("failed", "не удалось убедиться, что отклик ушёл — проверьте раздел «Отклики» "
                                        "на hh.ru", maybe_sent=True)
+        try:
+            await submit.click()
+        except Exception:  # noqa: BLE001 - the click may have gone out before navigation/close failed
+            return unsure
         try:
             await page.locator(sel.success).first.wait_for(timeout=self.success_timeout_ms)
         except Exception:  # noqa: BLE001 - timeout, or the page navigated away mid-check

@@ -65,6 +65,8 @@ def update(s: Session, user_id: int, resume_id: int, *, title: str, text: str, p
     text = text.strip()
     if len(text) < 50:
         raise ValidationFailed("Резюме слишком короткое")
+    if len(text) > MAX_RESUME_CHARS:
+        raise ValidationFailed(f"Резюме длиннее {MAX_RESUME_CHARS} символов — сократите его")
     resume.title, resume.text, resume.preferences = title.strip() or resume.title, text, preferences.strip()
     return resume
 

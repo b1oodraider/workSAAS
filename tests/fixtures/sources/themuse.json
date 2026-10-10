@@ -1,0 +1,116 @@
+{
+ "page": 1,
+ "page_count": 4804,
+ "items_per_page": 20,
+ "took": 9,
+ "timed_out": false,
+ "total": 96068,
+ "results": [
+  {
+   "contents": "<p><strong>About Genius AI</strong></p>\n\n<p>Genius AI is building technology to help local businesses run themselves. Genius AI products do the admin work that keeps practitioners from the work they love and the people they serve. From GlossGenius to Reception, its products work 24/7 on busywork like booking, marketing, client management, finances, staff and inventory management, and more.</p>\n\n<p>Genius AI technology has saved businesses 106M in admin hours, earned them $2.0B in additional revenue, and facilitated more than 624M client touch points.</p>\n\n<p><strong>About the Role</strong></p>\n\n<p>Genius AI is building 0-to-1 AI products we expect to be a massive revenue driver, and this role sits at the center of that build. As a Staff Backend Engineer, you'll be the technical anchor for our highest-innovation teams: setting architectural direction, validating options through proof-of-concepts, and turning ambitious initiatives into clear, buildable roadmaps. This is an IC role with r",
+   "name": "Staff Software Engineer, Backend",
+   "type": "external",
+   "publication_date": "2026-07-20T18:44:45Z",
+   "short_name": "staff-software-engineer-backend-7d1ec3",
+   "model_type": "jobs",
+   "id": 21820572,
+   "locations": [
+    {
+     "name": "Flexible / Remote"
+    },
+    {
+     "name": "New York, NY"
+    }
+   ],
+   "categories": [
+    {
+     "name": "Software Engineering"
+    }
+   ],
+   "levels": [
+    {
+     "name": "Senior Level",
+     "short_name": "senior"
+    }
+   ],
+   "tags": [],
+   "refs": {
+    "landing_page": "https://www.themuse.com/jobs/glossgenius/staff-software-engineer-backend-7d1ec3"
+   },
+   "company": {
+    "id": 15000202,
+    "short_name": "glossgenius",
+    "name": "GlossGenius"
+   }
+  },
+  {
+   "contents": "<div><p>SpaceX was founded under the belief that a future where humanity is out exploring the stars is fundamentally more exciting than one where we are not. Today SpaceX is actively developing the technologies to make this possible, with the ultimate goal of&nbsp;enabling human life on Mars.</p></div>\n\n<p><strong>SR. FULL STACK ENGINEER (APPLICATION SOFTWARE)&nbsp;</strong></p>\n\n<p>The application software team is the central nervous system of SpaceX – we create mission critical applications that are used throughout SpaceX to accelerate launch vehicle production and flight as well as systems that allow Starlink to grow into a worldwide fast, reliable Internet service. We are looking for engineers who treat fellow teammates with fairness, respect, and support.</p>\n\n<p>Our team is currently creating and evolving systems to enable rapid build and reuse of Starship as well as designing the next generation manufacturing software that will be used in high throughput factories for Starlink. ",
+   "name": "Sr. Full Stack Engineer (Application Software)",
+   "type": "external",
+   "publication_date": "2026-06-26T18:34:37Z",
+   "short_name": "sr-full-stack-engineer-application-software",
+   "model_type": "jobs",
+   "id": 21852956,
+   "locations": [
+    {
+     "name": "El Segundo, CA"
+    }
+   ],
+   "categories": [
+    {
+     "name": "Software Engineering"
+    }
+   ],
+   "levels": [
+    {
+     "name": "Senior Level",
+     "short_name": "senior"
+    }
+   ],
+   "tags": [],
+   "refs": {
+    "landing_page": "https://www.themuse.com/jobs/spacex/sr-full-stack-engineer-application-software"
+   },
+   "company": {
+    "id": 15000190,
+    "short_name": "spacex",
+    "name": "SpaceX"
+   }
+  },
+  {
+   "contents": "<div><p><strong>ABOUT SOTHEBY'S</strong></p>\n<p>Established in 1744, Sotheby’s promotes access and ownership of exceptional art and luxury objects through auctions, private sales and retail. Our deep expertise across 70 selling categories is supported by a leading technology platform and a global network of specialists spanning 40 countries. Selling categories include Contemporary Art, Modern and Impressionist Art, Old Masters, Chinese Works of Art, Jewelry, Watches, Wine and Spirits and Design, as well as collectible cars and real estate through RM Sotheby’s and Concierge. Sotheby’s Financial Services is a leading art lender and provides capital solutions for collectors around the world, having originated more than $12 billion in loans since its inception. Sotheby’s new global headquarters is now open at the iconic Breuer building at 945 Madison Avenue in New York City.</p></div>\n\n<p><strong>THE ROLE</strong></p>\n\n<p>Provide integrated expertise and exceptional service for both client",
+   "name": "Shipping Coordinator",
+   "type": "external",
+   "publication_date": "2026-09-04T18:29:04Z",
+   "short_name": "shipping-coordinator-a8642b",
+   "model_type": "jobs",
+   "id": 22131329,
+   "locations": [
+    {
+     "name": "Zurich, Switzerland"
+    }
+   ],
+   "categories": [
+    {
+     "name": "Software Engineering"
+    }
+   ],
+   "levels": [
+    {
+     "name": "Mid Level",
+     "short_name": "mid"
+    }
+   ],
+   "tags": [],
+   "refs": {
+    "landing_page": "https://www.themuse.com/jobs/sothebys/shipping-coordinator-a8642b"
+   },
+   "company": {
+    "id": 15000187,
+    "short_name": "sothebys",
+    "name": "Sotheby's"
+   }
+  }
+ ],
+ "aggregations": {}
+}

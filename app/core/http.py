@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Any
 from urllib.parse import unquote, urlsplit
 
@@ -63,3 +66,60 @@ def chromium_launch_options(*, headless: bool = True, use_proxy: bool = False,
     if proxy:
         launch["proxy"] = proxy
     return launch
+
+
+class ChromiumSlot:
+    """One automation Chromium per process: two at once can exhaust a small (512 MB) container.
+
+    Held for the browser's whole lifetime by the applier and by ``BrowserFetcher``. Re-entrant per
+    task, so code that already holds the slot and then starts a fetcher in the same task proceeds
+    instead of waiting for itself (a deadlock)."""
+
+    def __init__(self) -> None:
+        self._lock: asyncio.Lock | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._owner: asyncio.Task | None = None
+        self._depth = 0
+
+    def _lock_for_loop(self) -> asyncio.Lock:
+        loop = asyncio.get_running_loop()
+        if self._lock is None or self._loop is not loop:  # a new event loop (tests, restarts)
+            self._lock, self._loop, self._owner, self._depth = asyncio.Lock(), loop, None, 0
+        return self._lock
+
+    async def acquire(self) -> None:
+        lock = self._lock_for_loop()
+        task = asyncio.current_task()
+        if task is not None and self._owner is task:
+            self._depth += 1
+            return
+        await lock.acquire()
+        self._owner, self._depth = task, 1
+
+    def release(self) -> None:
+        if self._lock is None or self._depth <= 0:
+            return
+        self._depth -= 1
+        if self._depth == 0:
+            self._owner = None
+            self._lock.release()
+
+    @property
+    def busy(self) -> bool:
+        try:
+            if asyncio.get_running_loop() is not self._loop:
+                return False  # held in a loop that is gone: _lock_for_loop() starts afresh
+        except RuntimeError:
+            pass
+        return self._depth > 0
+
+    @asynccontextmanager
+    async def hold(self) -> AsyncIterator[None]:
+        await self.acquire()
+        try:
+            yield
+        finally:
+            self.release()
+
+
+chromium_slot = ChromiumSlot()

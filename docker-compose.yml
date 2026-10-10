@@ -1,6 +1,9 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        WITH_BROWSER: "1"   # "0" — образ без браузера (автоотклики не будут работать)
     restart: unless-stopped
     env_file: .env
     environment:
@@ -11,4 +14,7 @@ services:
     # Only localhost: put Caddy/nginx with HTTPS in front on a VPS (see README).
     ports:
       - "127.0.0.1:8000:8000"
-    mem_limit: 512m
+    # Python ~250 MB + one headless Chromium ~400 MB at a time (auto-apply and sources with
+    # fetcher = "browser"; the hh.ru status sync is plain HTTP, no browser).
+    mem_limit: 1g
+    shm_size: 256m   # Chromium needs more than Docker's default 64 MB of /dev/shm

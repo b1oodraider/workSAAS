@@ -12,6 +12,7 @@ from pydantic_core import PydanticUndefined
 from sqlalchemy.orm import Session
 
 from app.core.db import session_scope
+from app.core.security import session_stamp
 from app.models import User
 
 
@@ -27,14 +28,20 @@ class CurrentUser:
 
 
 def db() -> Iterator[Session]:
+    """Request session, committed when the handler returns.
+
+    Always declare it as ``Depends(db, scope="function")``: with the default "request" scope
+    FastAPI commits after the response has been sent, so a failed commit would still show the
+    user a success page or redirect (tests/test_web_hardening.py checks every route).
+    """
     with session_scope() as s:
         yield s
 
 
-def current_user(request: Request, s: Session = Depends(db)) -> CurrentUser:
+def current_user(request: Request, s: Session = Depends(db, scope="function")) -> CurrentUser:
     user_id = request.session.get("user_id")
     user = s.get(User, user_id) if user_id else None
-    if user is None or not user.is_active:
+    if user is None or not user.is_active or request.session.get("pw") != session_stamp(user.password_hash):
         request.session.clear()
         raise LoginRequired()
     cu = CurrentUser(id=user.id, username=user.username, is_admin=user.is_admin)

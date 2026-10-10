@@ -23,7 +23,7 @@ def _back(anchor: str = "") -> RedirectResponse:
 
 
 @router.get("")
-def page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     return render(request, "autoapply.html", data=autoapply_svc.overview(s, user.id), modes=MODE_LABELS,
                   app_status=APP_STATUS_LABELS)
 
@@ -33,7 +33,7 @@ def save_settings(request: Request, enabled: bool = Form(False), mode: str = For
                   min_score: int = Form(80), daily_limit: int = Form(10), min_interval_min: int = Form(2),
                   active_from_hour: int = Form(9), active_to_hour: int = Form(21), resume_id: str = Form(""),
                   site_resume_title: str = Form(""), letter_tone: str = Form("friendly"),
-                  user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+                  user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     try:
         cfg = autoapply_svc.update_config(
             s, user.id, enabled=enabled, mode=mode, min_score=min_score, daily_limit=daily_limit,
@@ -56,7 +56,7 @@ def save_settings(request: Request, enabled: bool = Form(False), mode: str = For
 
 
 @router.post("/plan")
-def plan_now(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def plan_now(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     added = autoapply_svc.plan(s, user.id)
     cfg = autoapply_svc.get_config(s, user.id)
     if added:
@@ -69,7 +69,7 @@ def plan_now(request: Request, user: CurrentUser = Depends(current_user), s: Ses
 
 
 @router.post("/pause")
-def pause(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def pause(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     autoapply_svc.pause(s, user.id, "вы поставили паузу")
     autoapply_svc.mark_pause_notified(s, user.id)
     flash(request, "Автоотклики на паузе")
@@ -77,7 +77,7 @@ def pause(request: Request, user: CurrentUser = Depends(current_user), s: Sessio
 
 
 @router.post("/resume")
-def resume(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def resume(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     autoapply_svc.resume_after_pause(s, user.id)
     idle = autoapply_svc.idle_reason(s, user.id)
     flash(request, "Автоотклики снова работают" + (f", но пока ждут: {idle}" if idle else ""))
@@ -85,26 +85,26 @@ def resume(request: Request, user: CurrentUser = Depends(current_user), s: Sessi
 
 
 @router.post("/{app_id}/approve")
-def approve(request: Request, app_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def approve(request: Request, app_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     flash(request, autoapply_svc.approve(s, user.id, app_id))
     return _back("#queue")
 
 
 @router.post("/{app_id}/cancel")
-def cancel(request: Request, app_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def cancel(request: Request, app_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     flash(request, autoapply_svc.cancel(s, user.id, app_id))
     return _back("#queue")
 
 
 @router.post("/{app_id}/restore")
-def restore(request: Request, app_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def restore(request: Request, app_id: int, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     flash(request, autoapply_svc.restore(s, user.id, app_id))
     return _back("#queue")
 
 
 @router.post("/session/{site}")
 def upload_session(request: Request, site: str, file: UploadFile = File(...),
-                   user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+                   user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     data = file.file.read(MAX_UPLOAD + 1)
     try:
         resumed = autoapply_svc.save_site_session(s, user.id, site, data)

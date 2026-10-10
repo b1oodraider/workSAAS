@@ -17,7 +17,7 @@ from typing import Any
 from bs4 import BeautifulSoup, Tag
 
 from app.core.text import html_to_text
-from app.sources.base import VacancyDraft, as_dict, as_str, safe_map
+from app.sources.base import VacancyDraft, as_dict, as_str, naive_utc, safe_map
 from app.sources.jsonld import find_job_posting, walk
 from app.sources.salary import _DIGITS_RE, parse_salary_text  # noqa: F401  (re-exported)
 
@@ -42,11 +42,11 @@ def _parse_dt(value: Any) -> datetime | None:
         return None
     for fmt in ("%Y-%m-%dT%H:%M:%S%z", "%Y-%m-%dT%H:%M:%S.%f%z", "%Y-%m-%d"):
         try:
-            return datetime.strptime(value.replace("Z", "+0000"), fmt).replace(tzinfo=None)
+            return naive_utc(datetime.strptime(value.replace("Z", "+0000"), fmt))
         except ValueError:
             continue
     try:
-        return datetime.fromisoformat(value).replace(tzinfo=None)
+        return naive_utc(datetime.fromisoformat(value))
     except ValueError:
         return None
 

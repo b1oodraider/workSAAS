@@ -12,6 +12,7 @@ from sqlalchemy import select
 
 from app.core.config import ModelPrice
 from app.core.db import session_scope, utcnow
+from app.core.errors import ValidationFailed
 from app.core.security import hash_password
 from app.features import FEATURES
 from app.jobs.queue import JobContext, drain, enqueue, job_handler, recover_stale_jobs
@@ -127,6 +128,7 @@ async def test_every_feature_result_page_renders(kind, user_id, resume_id, vacan
 
 
 async def test_budget_stops_bulk_matching(env, user_id, resume_id, monkeypatch):
+    env.matching.quick_match = False  # one paid call per vacancy: easy to count
     _stub(monkeypatch, env)
     FakeProvider.canned["resume_profile"] = PROFILE
     await search_svc.get_profile(user_id, resume_id)  # profile computed before the budget is set
@@ -358,3 +360,136 @@ def test_playwright_proxy_splits_credentials(env):
                                       "username": "us@er", "password": "p:ss"}
     env.proxy_url = "socks5://10.0.0.1:1080"
     assert playwright_proxy(True) == {"server": "socks5://10.0.0.1:1080"}
+
+
+# --------------------------------------------------------------------------- review 2026-10
+
+
+def test_manual_vacancy_never_becomes_shared_canonical(user_id):
+    from app.sources.base import VacancyDraft as Draft
+
+    with session_scope() as s:
+        planted = vacancy_svc.create_manual(s, user_id, title="Python-разработчик", company="Яндекс",
+                                            text="Пишите в t.me/scam " + VACANCY_TEXT)
+        real, _ = vacancy_svc.upsert(s, Draft(source="hh", external_id="1", title="Python-разработчик",
+                                              company="Яндекс", description=VACANCY_TEXT))
+        assert planted.dedup_key == real.dedup_key and planted.id < real.id
+        assert vacancy_svc.canonical_for(s, real).id == real.id
+
+
+async def test_letter_without_preferences_ignores_match_talking_points(user_id, resume_id, vacancy_id):
+    with session_scope() as s:
+        s.add(Analysis(user_id=user_id, kind="match", resume_id=resume_id, vacancy_id=vacancy_id,
+                       output={"summary": "s", "matched": [], "gaps": [], "risks": [], "score": 70,
+                               "talking_points": ["зарплата не ниже 900к"], "verdict": "good",
+                               "recommendation": "apply"},
+                       provider="f", model="m", prompt_version="0"))
+    await analysis_svc.run_analysis(user_id, "cover_letter", resume_id=resume_id, vacancy_id=vacancy_id,
+                                    params={"use_preferences": False})
+    assert "900к" not in FakeProvider.calls[-1].user
+    await analysis_svc.run_analysis(user_id, "cover_letter", resume_id=resume_id, vacancy_id=vacancy_id)
+    assert "900к" in FakeProvider.calls[-1].user
+
+
+def test_resume_edit_enforces_size_limit(user_id, resume_id):
+    with session_scope() as s, pytest.raises(ValidationFailed):
+        resume_svc.update(s, user_id, resume_id, title="CV", text="x" * (resume_svc.MAX_RESUME_CHARS + 1),
+                          preferences="")
+
+
+def test_docx_zip_bomb_is_rejected():
+    import io
+    import zipfile
+
+    from app.documents.extract import MAX_DOCX_UNPACKED, ExtractError, extract_text
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("word/document.xml", b"\0" * (MAX_DOCX_UNPACKED + 1))
+    with pytest.raises(ExtractError, match="распаковки"):
+        extract_text("cv.docx", buf.getvalue())
+
+
+def test_oversized_upload_rejected_before_auth(env):
+    from app.main import create_app
+
+    env.max_upload_mb = 1
+    with TestClient(create_app(start_background=False)) as client:
+        r = client.post("/resumes", files={"file": ("cv.txt", b"x" * (3 * 1024 * 1024), "text/plain")},
+                        follow_redirects=False)
+    assert r.status_code == 413
+
+
+def test_login_spray_does_not_reset_victim_counter():
+    from app.web.routes.auth import MAX_FAILURES, LoginThrottle
+
+    t = LoginThrottle()
+    for _ in range(MAX_FAILURES):
+        t.fail("1.2.3.4", "alice")
+    for i in range(10_001):
+        t.fail("1.2.3.4", f"junk{i}")
+    # Memory pruning keeps the most-attacked keys (the global cap is hit too, so check the pair).
+    assert t.pair.blocked(("1.2.3.4", "alice"))
+
+
+def test_password_change_logs_out_other_sessions(user_id):
+    from app.main import create_app
+
+    app = create_app(start_background=False)
+    with TestClient(app) as stolen, TestClient(app) as owner:
+        for c in (stolen, owner):
+            c.post("/login", data={"username": "alice", "password": "password123"})
+        assert stolen.get("/settings", follow_redirects=False).status_code == 200
+        owner.post("/settings/password", data={"current": "password123", "new": "new-password-1"})
+        assert owner.get("/settings", follow_redirects=False).status_code == 200
+        assert stolen.get("/settings", follow_redirects=False).status_code == 303
+
+
+def test_admin_resetting_own_password_stays_logged_in(user_id):
+    from app.main import create_app
+
+    with TestClient(create_app(start_background=False)) as client:
+        client.post("/login", data={"username": "alice", "password": "password123"})
+        client.post(f"/admin/users/{user_id}", data={"action": "reset_password"})
+        page = client.get("/admin", follow_redirects=False)
+    assert page.status_code == 200
+
+
+def test_chunked_oversized_upload_gets_413(env, user_id):
+    from app.main import create_app
+
+    env.max_upload_mb = 1
+    body = b"--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.txt\"\r\n\r\n" \
+           + b"x" * (3 * 1024 * 1024) + b"\r\n--b--\r\n"
+
+    def chunks():
+        for i in range(0, len(body), 64 * 1024):
+            yield body[i:i + 64 * 1024]
+
+    with TestClient(create_app(start_background=False)) as client:
+        client.post("/login", data={"username": "alice", "password": "password123"})
+        r = client.post("/resumes", content=chunks(), headers={"content-type": "multipart/form-data; boundary=b"})
+    assert r.status_code == 413
+
+
+@pytest.mark.parametrize("ip", ["64:ff9b::a9fe:a9fe", "::ffff:127.0.0.1", "2002:7f00:1::1"])
+def test_ipv6_wrapped_internal_addresses_are_blocked(ip):
+    import ipaddress
+
+    assert not vacancy_svc._public(ipaddress.ip_address(ip))
+
+
+def test_copy_on_ignores_untrusted_posts_and_stale_copies(user_id):
+    with session_scope() as s:
+        tg, _ = vacancy_svc.upsert(s, VacancyDraft(source="telegram", external_id="t", title="Python",
+                                                   company="Сбер", description="x"))
+        old, _ = vacancy_svc.upsert(s, VacancyDraft(source="hh", external_id="1", title="Python",
+                                                    company="Сбер", description="x"))
+        old.fetched_at = utcnow() - timedelta(days=90)
+        habr, _ = vacancy_svc.upsert(s, VacancyDraft(source="habr", external_id="h", title="Python",
+                                                     company="Сбер", description="x"))
+        assert vacancy_svc.copy_on(s, tg, {"hh"}) is None
+        assert vacancy_svc.copy_on(s, habr, {"hh"}) is None  # only an archived-looking copy exists
+        fresh, _ = vacancy_svc.upsert(s, VacancyDraft(source="hh", external_id="2", title="Python",
+                                                      company="Сбер", description="x"))
+        assert vacancy_svc.copy_on(s, habr, {"hh"}).id == fresh.id

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.bot.api import get_api
 from app.core.config import get_settings
-from app.core.security import hash_password, verify_password
+from app.core.security import hash_password, session_stamp, verify_password
 from app.models import User
 from app.services import resumes as resume_svc
 from app.services import telegram_links
@@ -18,7 +18,7 @@ router = APIRouter(prefix="/settings")
 
 
 @router.get("")
-def page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def page(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     me = s.get(User, user.id)
     tg = get_settings().telegram
     api = get_api()
@@ -31,13 +31,13 @@ def page(request: Request, user: CurrentUser = Depends(current_user), s: Session
 
 
 @router.post("/telegram/link")
-def telegram_link(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def telegram_link(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     request.session["tg_code"] = telegram_links.create_code(s, user.id)
     return RedirectResponse("/settings", status_code=303)
 
 
 @router.post("/telegram/unlink")
-def telegram_unlink(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+def telegram_unlink(request: Request, user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     telegram_links.unlink(s, user.id)
     flash(request, "Telegram отвязан")
     return RedirectResponse("/settings", status_code=303)
@@ -46,7 +46,7 @@ def telegram_unlink(request: Request, user: CurrentUser = Depends(current_user),
 @router.post("/preferences")
 def preferences(request: Request, notify_min_score: str = Form(""), default_resume_id: str = Form(""),
                 notify_off: bool = Form(False), user: CurrentUser = Depends(current_user),
-                s: Session = Depends(db)):
+                s: Session = Depends(db, scope="function")):
     value = notify_min_score.strip()
     if notify_off:
         users_svc.set_notify_threshold(s, user.id, users_svc.NOTIFY_OFF)
@@ -59,7 +59,7 @@ def preferences(request: Request, notify_min_score: str = Form(""), default_resu
 
 @router.post("/password")
 def change_password(request: Request, current: str = Form(...), new: str = Form(...),
-                    user: CurrentUser = Depends(current_user), s: Session = Depends(db)):
+                    user: CurrentUser = Depends(current_user), s: Session = Depends(db, scope="function")):
     me = s.get(User, user.id)
     if not verify_password(current, me.password_hash):
         flash(request, "Текущий пароль неверен", "error")
@@ -67,5 +67,6 @@ def change_password(request: Request, current: str = Form(...), new: str = Form(
         flash(request, "Новый пароль — минимум 8 символов", "error")
     else:
         me.password_hash = hash_password(new)
+        request.session["pw"] = session_stamp(me.password_hash)  # other sessions are logged out
         flash(request, "Пароль изменён")
     return RedirectResponse("/settings", status_code=303)

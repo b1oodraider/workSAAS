@@ -7,6 +7,21 @@ from typing import Any, Literal
 from app.apply import sessions
 
 ApplyStatus = Literal["applied", "skipped", "failed", "blocked"]
+# What the site says about an application the user made (by us or by hand).
+SiteStatus = Literal["applied", "viewed", "invited", "rejected", "archived"]
+
+
+class SessionExpired(Exception):
+    """The saved login session no longer works: the user must log in again."""
+
+
+@dataclass
+class SiteApplication:
+    external_id: str
+    status: SiteStatus
+    title: str
+    company: str | None = None
+    url: str | None = None
 
 
 @dataclass
@@ -49,6 +64,18 @@ class Applier(ABC):
 
     @abstractmethod
     async def apply(self, req: ApplyRequest) -> ApplyResult: ...
+
+    def session_ok(self, user_id: int) -> bool:
+        """A saved session exists and wasn't rejected by the site."""
+        return self.has_session(user_id)
+
+    def mark_session_stale(self, user_id: int) -> None:
+        """The site rejected the session: ask the user to log in again."""
+
+    async def site_applications(self, user_id: int) -> list[SiteApplication] | None:
+        """The user's applications as the site lists them (None = this site can't tell).
+        Raises SessionExpired when the login session no longer works."""
+        return None
 
     # Saved login sessions (see app/apply/sessions.py).
 

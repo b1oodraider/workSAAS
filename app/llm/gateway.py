@@ -8,28 +8,32 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import timedelta
 from typing import Any, Generic, TypeVar
 
 from pydantic import BaseModel, ValidationError
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
-from app.core.config import LLMTarget, Settings, get_settings
-from app.core.db import month_start, session_scope
+from app.core.config import EmbeddingSettings, LLMRoute, LLMTarget, Settings, get_settings
+from app.core.db import month_start, session_scope, utcnow
 from app.core.text import stable_hash
 from app.llm.base import (
     BudgetExceeded,
+    EmbeddingProvider,
     LLMError,
     LLMInvalidOutput,
     LLMProvider,
     LLMRefusal,
     LLMRequest,
+    LLMUnavailable,
     TokenUsage,
 )
+from app.llm import vectors
 from app.llm.pricing import cost_usd
 from app.llm.providers import build_provider
 from app.llm.tasks import LLMTask
-from app.models import LLMCache, LLMUsage, User
+from app.models import EmbeddingCache, LLMCache, LLMUsage, User
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +48,8 @@ class TaskResult(Generic[T]):
     prompt_version: str
     cached: bool
     cost_usd: float
+    usage: TokenUsage = field(default_factory=TokenUsage)
+    latency_ms: int = 0
 
 
 class LLMGateway:
@@ -99,8 +105,10 @@ class LLMGateway:
         *,
         user_id: int | None,
         use_cache: bool = True,
+        route: LLMRoute | None = None,
     ) -> TaskResult[T]:
-        route = self.settings.llm.route_for(task.name)
+        """``route`` overrides the configured one (model comparison runs the same task elsewhere)."""
+        route = route or self.settings.llm.route_for(task.name)
         variables = {"language": self.settings.output_language, **variables}
         system, user = task.render(variables)
         use_cache = use_cache and self.settings.llm.cache_enabled
@@ -110,10 +118,14 @@ class LLMGateway:
         if use_cache:
             for target in targets:
                 hit = self._cache_get(self._cache_key(task, target, system, user))
-                if hit is not None:
+                try:
+                    output = task.output.model_validate(hit) if hit is not None else None
+                except ValidationError:  # schema changed without a version bump: treat as a miss
+                    output = None
+                if output is not None:
                     self._record(user_id, task.name, target.provider, target.model, TokenUsage(), 0.0,
                                  cached=True, ok=True, latency_ms=0)
-                    return TaskResult(output=task.output.model_validate(hit), provider=target.provider,
+                    return TaskResult(output=output, provider=target.provider,
                                       model=target.model, prompt_version=task.version, cached=True,
                                       cost_usd=0.0)
 
@@ -131,13 +143,99 @@ class LLMGateway:
                                 target.provider, exc, targets[i + 1].provider)
                 continue
             if use_cache:
-                with session_scope() as s:
-                    s.merge(LLMCache(key=self._cache_key(task, target, system, user), task=task.name,
-                                     provider=target.provider, model=target.model,
-                                     output=result.output.model_dump(mode="json")))
+                self._cache_put(task, target, system, user, result.output)
             return result
         assert last_error is not None
         raise last_error
+
+    # --- embeddings -----------------------------------------------------------
+
+    def embedding_provider(self) -> tuple[EmbeddingProvider, EmbeddingSettings]:
+        """The configured [llm.embeddings] provider, or LLMError if off or not capable."""
+        cfg = self.settings.llm.embeddings
+        if not cfg.enabled or not cfg.provider or not cfg.model:
+            raise LLMError("Смысловой отбор выключен: задайте [llm.embeddings] в config.toml")
+        provider = self.provider(cfg.provider)
+        if not isinstance(provider, EmbeddingProvider):
+            raise LLMError(f"Провайдер {cfg.provider!r} не умеет эмбеддинги (нужен openai_compat)")
+        return provider, cfg
+
+    async def embed(self, texts: list[str], *, user_id: int | None,
+                    partial: bool = False) -> list[list[float] | None]:
+        """Unit-length vectors for ``texts`` ([llm.embeddings]). A text embedded once is never
+        paid for again, by anyone: vectors are cached by hash(model, text).
+
+        ``partial=True``: a batch the provider rejects for good (4xx: too long, odd text) is split
+        until the bad texts are found; they get None and the rest still get vectors. Budget and
+        temporary errors always raise."""
+        provider, cfg = self.embedding_provider()
+        texts = [t[: cfg.max_chars] for t in texts]
+        keys = [stable_hash("embedding", cfg.model, t) for t in texts]
+        found: dict[str, list[float] | None] = dict(self._vectors_get(keys))
+        missing = list(dict.fromkeys(k for k in keys if k not in found))
+        text_of = dict(zip(keys, texts))
+        pending = [missing[i : i + cfg.batch_size] for i in range(0, len(missing), cfg.batch_size)]
+        while pending:
+            batch = pending.pop(0)
+            try:
+                found.update(await self._embed_batch(provider, cfg, batch, text_of, user_id))
+            except (BudgetExceeded, LLMUnavailable):
+                raise
+            except LLMError as exc:
+                if not partial:
+                    raise
+                if len(batch) == 1:
+                    log.warning("embedding skipped for one text: %s", exc)
+                    found[batch[0]] = None
+                else:
+                    half = len(batch) // 2
+                    pending[:0] = [batch[:half], batch[half:]]
+        return [found[k] for k in keys]
+
+    async def _embed_batch(self, provider: EmbeddingProvider, cfg: EmbeddingSettings, batch: list[str],
+                           text_of: dict[str, str], user_id: int | None) -> dict[str, list[float]]:
+        self._check_budget(user_id)
+        target = LLMTarget(provider=cfg.provider, model=cfg.model)
+        started = time.monotonic()
+        try:
+            resp = await provider.embed(cfg.model, [text_of[k] for k in batch])
+            if len(resp.vectors) != len(batch):
+                raise LLMInvalidOutput(f"{cfg.provider}: {len(resp.vectors)} vectors for {len(batch)} texts")
+        except LLMError as exc:
+            usage = exc.usage or TokenUsage()
+            self._record(user_id, "embedding", cfg.provider, cfg.model, usage, self._cost(target, usage),
+                         cached=False, ok=False, latency_ms=int((time.monotonic() - started) * 1000))
+            raise
+        self._record(user_id, "embedding", cfg.provider, resp.model, resp.usage,
+                     self._cost(target, resp.usage), cached=False, ok=True,
+                     latency_ms=int((time.monotonic() - started) * 1000))
+        packed = {k: vectors.pack(vectors.unit(v)) for k, v in zip(batch, resp.vectors)}
+        try:
+            with session_scope() as s:
+                for k, blob in packed.items():
+                    s.merge(EmbeddingCache(key=k, model=cfg.model, dims=len(blob) // 2, vector=blob))
+        except Exception:  # noqa: BLE001 - paid vectors are still returned; the cache is an optimisation
+            log.exception("embedding cache write failed (%d vectors)", len(packed))
+        # Same float16 precision as a cache hit: a text scores the same on every run.
+        return {k: vectors.unpack(blob) for k, blob in packed.items()}
+
+    @staticmethod
+    def _vectors_get(keys: list[str]) -> dict[str, list[float]]:
+        found: dict[str, list[float]] = {}
+        unique = list(dict.fromkeys(keys))
+        with session_scope() as s:
+            for i in range(0, len(unique), 500):  # SQLite caps bound parameters per statement
+                rows = s.execute(select(EmbeddingCache.key, EmbeddingCache.vector)
+                                 .where(EmbeddingCache.key.in_(unique[i : i + 500])))
+                found.update((key, vectors.unpack(blob)) for key, blob in rows)
+        return found
+
+    def purge_embeddings(self) -> int:
+        """Delete vectors stored more than [llm.embeddings] keep_days ago (by creation date, not last
+        use: a text still being found is simply embedded again, for a fraction of a kopeck)."""
+        cutoff = utcnow() - timedelta(days=self.settings.llm.embeddings.keep_days)
+        with session_scope() as s:
+            return s.execute(delete(EmbeddingCache).where(EmbeddingCache.created_at < cutoff)).rowcount or 0
 
     @staticmethod
     def _cache_key(task: LLMTask, target: LLMTarget, system: str, user: str) -> str:
@@ -148,6 +246,16 @@ class LLMGateway:
         with session_scope() as s:
             hit = s.get(LLMCache, key)
             return dict(hit.output) if hit else None
+
+    def _cache_put(self, task: LLMTask, target: LLMTarget, system: str, user: str, output: BaseModel) -> None:
+        """Store a paid answer. A failed write (DB locked) must not lose the answer already paid for."""
+        try:
+            with session_scope() as s:
+                s.merge(LLMCache(key=self._cache_key(task, target, system, user), task=task.name,
+                                 provider=target.provider, model=target.model,
+                                 output=output.model_dump(mode="json")))
+        except Exception:  # noqa: BLE001 - the cache is an optimisation
+            log.exception("llm cache write failed for task %s", task.name)
 
     async def _call(self, task: LLMTask[T], target: LLMTarget, system: str, user: str,
                     user_id: int | None) -> TaskResult[T]:
@@ -165,25 +273,33 @@ class LLMGateway:
         started = time.monotonic()
         try:
             resp = await provider.generate(req)
-            output = task.output.model_validate(resp.data)
-        except ValidationError as exc:
-            self._record(user_id, task.name, target.provider, target.model, TokenUsage(), 0.0,
-                         cached=False, ok=False, latency_ms=int((time.monotonic() - started) * 1000))
-            raise LLMInvalidOutput(f"Output does not match schema: {exc}") from exc
-        except LLMError:
-            self._record(user_id, task.name, target.provider, target.model, TokenUsage(), 0.0,
-                         cached=False, ok=False, latency_ms=int((time.monotonic() - started) * 1000))
+        except LLMError as exc:
+            # Truncated/unparsable answers were still billed (usage attached by the provider).
+            usage = exc.usage or TokenUsage()
+            self._record(user_id, task.name, target.provider, target.model, usage,
+                         self._cost(target, usage), cached=False, ok=False,
+                         latency_ms=int((time.monotonic() - started) * 1000))
             raise
         latency_ms = int((time.monotonic() - started) * 1000)
-        cfg = self.settings.llm.providers.get(target.provider)
-        multiplier = cfg.price_multiplier if cfg else 1.0
-        cost = round(cost_usd(target.model, resp.usage) * multiplier, 6)
+        cost = self._cost(target, resp.usage)
+        try:
+            output = task.output.model_validate(resp.data)
+        except ValidationError as exc:
+            self._record(user_id, task.name, target.provider, resp.model, resp.usage, cost,
+                         cached=False, ok=False, latency_ms=latency_ms)
+            raise LLMInvalidOutput(f"Output does not match schema: {exc}") from exc
         self._record(user_id, task.name, target.provider, resp.model, resp.usage, cost,
                      cached=False, ok=True, latency_ms=latency_ms)
         log.info("llm task=%s provider=%s model=%s cost=$%.4f latency=%dms", task.name, target.provider,
                  resp.model, cost, latency_ms)
         return TaskResult(output=output, provider=target.provider, model=resp.model,
-                          prompt_version=task.version, cached=False, cost_usd=cost)
+                          prompt_version=task.version, cached=False, cost_usd=cost,
+                          usage=resp.usage, latency_ms=latency_ms)
+
+    def _cost(self, target: LLMTarget, usage: TokenUsage) -> float:
+        cfg = self.settings.llm.providers.get(target.provider)
+        multiplier = cfg.price_multiplier if cfg else 1.0
+        return round(cost_usd(target.model, usage) * multiplier, 6)
 
     def _record(
         self,
@@ -198,23 +314,28 @@ class LLMGateway:
         ok: bool,
         latency_ms: int,
     ) -> None:
-        with session_scope() as s:
-            s.add(
-                LLMUsage(
-                    user_id=user_id,
-                    task=task,
-                    provider=provider,
-                    model=model,
-                    input_tokens=usage.input_tokens,
-                    output_tokens=usage.output_tokens,
-                    cache_read_tokens=usage.cache_read_tokens,
-                    cache_write_tokens=usage.cache_write_tokens,
-                    cost_usd=cost,
-                    cached=cached,
-                    ok=ok,
-                    latency_ms=latency_ms,
+        """Usage row for budgets and «Расходы». Never fatal: a failed write (DB locked) must not turn
+        an answer already paid for into an error (or hide the provider's own error)."""
+        try:
+            with session_scope() as s:
+                s.add(
+                    LLMUsage(
+                        user_id=user_id,
+                        task=task,
+                        provider=provider,
+                        model=model,
+                        input_tokens=usage.input_tokens,
+                        output_tokens=usage.output_tokens,
+                        cache_read_tokens=usage.cache_read_tokens,
+                        cache_write_tokens=usage.cache_write_tokens,
+                        cost_usd=cost,
+                        cached=cached,
+                        ok=ok,
+                        latency_ms=latency_ms,
+                    )
                 )
-            )
+        except Exception:  # noqa: BLE001
+            log.exception("llm usage write failed: task=%s provider=%s cost=$%.4f", task, provider, cost)
 
 
 _gateway: LLMGateway | None = None

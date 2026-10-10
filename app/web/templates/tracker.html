@@ -8,6 +8,25 @@
   <span>Офферов: <b>{{ f.offer }}</b></span>
   <span>Отказов: <b>{{ f.rejected }}</b></span>
 </div>
+{% if can_sync %}
+<div class="card">
+  <div class="row">
+  <span class="muted">Статусы откликов с hh.ru — приглашения, отказы и отклики, которые вы отправили на сайте сами, —
+  подтягиваются сюда автоматически раз в несколько часов
+  {% if last_sync and last_sync.status.value in ("queued", "running") %}— проверяем сейчас…
+  {% elif last_sync %}— проверено {{ (last_sync.finished_at or last_sync.created_at)|dt }}{% if last_sync.result %}: новых откликов {{ last_sync.result.added }}, приглашений {{ last_sync.result.invited }}, отказов {{ last_sync.result.rejected }}{% endif %}
+  {% else %}— ещё не проверяли{% endif %}</span>
+  <span class="spacer"></span>
+  <form method="post" action="/tracker/sync"><button class="btn-small secondary">Обновить сейчас</button></form>
+  </div>
+  {% set problems = (last_sync.result or {}).get("problems") if last_sync else None %}
+  {% if problems or (last_sync and last_sync.error) %}<div class="flash flash-error">{{ (problems or [last_sync.error])|join("; ") }}
+    {% if "войдите" in ((problems or [])|join(" ")) %} <a href="/autoapply#login-hh">Войти в hh.ru</a>{% endif %}</div>{% endif %}
+</div>
+{% else %}
+<div class="card muted">Войдите в hh.ru на странице <a href="/autoapply#login-hh">«Автоотклики»</a> — тогда приглашения и отказы
+  с сайта будут появляться здесь сами.</div>
+{% endif %}
 
 {% if data.due %}
 <div class="card">

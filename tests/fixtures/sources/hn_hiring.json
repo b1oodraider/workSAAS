@@ -1,0 +1,110 @@
+{
+ "stories": {
+  "hits": [
+   {
+    "objectID": "49922569",
+    "title": "Ask HN: Who is hiring? (October 2026)",
+    "author": "whoishiring",
+    "created_at": "2026-10-01T15:02:07Z",
+    "created_at_i": 1790866927,
+    "_tags": [
+     "story",
+     "author_whoishiring",
+     "story_49922569",
+     "ask_hn"
+    ]
+   },
+   {
+    "objectID": "49922568",
+    "title": "Ask HN: Who wants to be hired? (October 2026)",
+    "author": "whoishiring",
+    "created_at": "2026-10-01T15:02:07Z",
+    "created_at_i": 1790866927,
+    "_tags": [
+     "story",
+     "author_whoishiring",
+     "story_49922568",
+     "ask_hn"
+    ]
+   },
+   {
+    "objectID": "49522897",
+    "title": "Ask HN: Who is hiring? (September 2026)",
+    "author": "whoishiring",
+    "created_at": "2026-09-01T15:01:17Z",
+    "created_at_i": 1788274877,
+    "_tags": [
+     "story",
+     "author_whoishiring",
+     "story_49522897",
+     "ask_hn"
+    ]
+   }
+  ],
+  "nbHits": 512,
+  "page": 0,
+  "hitsPerPage": 5
+ },
+ "comments": {
+  "exhaustiveNbHits": false,
+  "exhaustiveTypo": false,
+  "hitsPerPage": 5,
+  "nbHits": 56,
+  "nbPages": 12,
+  "page": 0,
+  "params": "query=python&tags=comment%2Cstory_49922569&hitsPerPage=5&advancedSyntax=true&analyticsTags=backend",
+  "processingTimeMS": 3,
+  "query": "python",
+  "serverTimeMS": 5,
+  "hits": [
+   {
+    "_tags": [
+     "comment",
+     "author_d_manifest",
+     "story_49922569"
+    ],
+    "author": "d_manifest",
+    "comment_text": "Manifest | <a href=\"https:&#x2F;&#x2F;www.manifestcyber.com&#x2F;\" rel=\"nofollow\">https:&#x2F;&#x2F;www.manifestcyber.com&#x2F;</a> | REMOTE (US) | Full Time<p>Manifest is on a mission to secure the global software and AI supply chain. Our platform automates discovery and risk analysis across the software and AI systems organizations build and buy—SBOMs, AIBOMs, vulnerabilities, and third-party risk. Founded by alumni of DoD, CISA, and Palantir, we&#x27;re backed by First Round Capital, Ensemble VC, Homebrew, and BoxGroup, and we work with the US Air Force, DHS, Global 2000 companies, and critical infrastructure organizations.<p>Roles currently available:<p>Senior Backend Application Engineer | $150K–$210K + equity — Build user-facing product features and the services behind them on our next-generation platform. TypeScript&#x2F;Node, Go, Python, MongoDB. Looking for engineers who&#x27;ve shipped features end-to-end at B2B SaaS companies and care about both the product and the architect",
+    "created_at": "2026-10-07T02:09:37Z",
+    "created_at_i": 1791338977,
+    "objectID": "49987144",
+    "parent_id": 49922569,
+    "story_id": 49922569,
+    "story_title": "Ask HN: Who is hiring? (October 2026)",
+    "updated_at": "2026-10-07T02:15:04Z"
+   },
+   {
+    "_tags": [
+     "comment",
+     "author_christyfthk",
+     "story_49922569"
+    ],
+    "author": "christyfthk",
+    "comment_text": "Flow Traders | Research Engineer | Hong Kong | Full Time | Visa | Relocation \nFlow Traders is a leading proprietary trading firm with an entrepreneurial and innovative Tech culture at the heart of its business. We are looking for Research Engineers in our Hong Kong office. Join us build and scale the research framework behind our systematic trading models. You’ll work closely with Quantitative Researchers, drive end‑to‑end ML pipelines, and shape global standards for data‑driven model development. Research Engineers have joint responsibility for conducting research and delivering models.\nYou’ll thrive if you have: - 8+ years in ML &#x2F; Data Science &#x2F; Research Engineering (Postdoc&#x2F;Faculty can count towards this); - Strong Python and libraries such as Ray, numpy, PyTorch, and pandas; - Solid math&#x2F;stats background; - Experience with modern dev practices &amp; cloud technologies.\nIf you&#x27;re interested, apply here: <a href=\"https:&#x2F;&#x2F;www.flowtraders.com&#x2F;car",
+    "created_at": "2026-10-07T01:12:38Z",
+    "created_at_i": 1791335558,
+    "objectID": "49986633",
+    "parent_id": 49922569,
+    "story_id": 49922569,
+    "story_title": "Ask HN: Who is hiring? (October 2026)",
+    "updated_at": "2026-10-07T01:17:36Z"
+   },
+   {
+    "_tags": [
+     "comment",
+     "author_QMJobs",
+     "story_49922569"
+    ],
+    "author": "QMJobs",
+    "comment_text": "Quantum Minds | Senior Software Engineer – LLVM&#x2F;Fuzzing&#x2F;Program Analysis | Contract | REMOTE (US) | Full-Time<p>Quantum Minds is hiring a senior engineer to support a modern analysis pipeline involving compiler tooling, program analysis, fuzzing, and automation. The work includes preparing the codebase for future open‑source release.<p>You’ll work on:  \n• LLVM IR generation + metadata\n• LLVM pass development (IR cleanup, MMIO handling, fuzzability improvements)\n• Fuzzing harnesses + campaigns (libFuzzer, AFL++, Honggfuzz)\n• Crash triage, deduplication, automated reporting\n• Python tooling + CI improvements\n• Open‑source readiness (licensing, reproducible builds, repo migration)<p>Requirements:  \n• Strong C&#x2F;C++ systems engineering\n• Hands‑on LLVM IR + pass development\n• Fuzzing + sanitizers experience\n• Crash analysis + software‑security fundamentals\n• Python + Git workflows\n• Microsoft ecosystem experience strongly preferred<p>Nice to have:  \n• Firmware&#x2F;embedded (MM",
+    "created_at": "2026-10-06T15:05:39Z",
+    "created_at_i": 1791299139,
+    "objectID": "49979600",
+    "parent_id": 49922569,
+    "story_id": 49922569,
+    "story_title": "Ask HN: Who is hiring? (October 2026)",
+    "updated_at": "2026-10-06T15:09:32Z"
+   }
+  ]
+ }
+}

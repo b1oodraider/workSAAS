@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 from app.features import register
-from app.features._shared import latest_output
+from app.features._shared import LONG_TEXT_MAX, latest_output
 from app.features.base import AnalysisFeature, feature_dir
 from app.features.letter_critic.schema import LetterCritique
 from app.llm.tasks import LLMTask
@@ -10,6 +10,7 @@ from app.core.errors import ValidationFailed
 
 class Params(BaseModel):
     letter_text: str = Field("", title="Текст письма (пусто — проверить последнее сгенерированное)",
+                             max_length=LONG_TEXT_MAX,
                              json_schema_extra={"widget": "textarea"})
 
 
@@ -29,7 +30,7 @@ FEATURE = register(
         title="Проверить письмо",
         description="Критик: разбор вашего (или сгенерированного) письма глазами рекрутера и исправленная версия.",
         subject="resume_vacancy",
-        task=LLMTask(name="letter_critic", version="2", output=LetterCritique,
+        task=LLMTask(name="letter_critic", version="3", output=LetterCritique,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         params_model=Params,
         context_builder=_context,

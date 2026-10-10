@@ -48,6 +48,9 @@ class AnalysisFeature:
     # Hidden features run internally (e.g. resume_profile) and get no UI button.
     hidden: bool = False
     order: int = 100
+    # The output goes to an employer (letter, reply, tailored resume): private search criteria
+    # (the salary floor, citizenship, deal breakers) are left out of <preferences>.
+    employer_facing: bool = False
     # "main" buttons are always visible; "more" ones are folded under «Ещё».
     group: Literal["main", "more"] = "main"
 

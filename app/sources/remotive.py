@@ -12,6 +12,7 @@ from typing import Any
 from app.core.text import html_to_text
 from app.sources.base import JobSource, SearchQuery, VacancyDraft, safe_map
 from app.sources.jsonld import parse_date
+from app.sources.salary import detect_currency
 from app.sources.web import fetch_json
 
 API = "https://remotive.com/api/remote-jobs"
@@ -36,10 +37,15 @@ def item_to_draft(item: dict[str, Any]) -> VacancyDraft | None:
     if not item.get("id") or not item.get("title"):
         return None
     sal_from, sal_to = parse_usd_range(item.get("salary"))
+    currency = detect_currency(str(item.get("salary") or ""))
     location = item.get("candidate_required_location")
     desc = html_to_text(item.get("description") or "")
     if location:
         desc = f"Требования к локации кандидата: {location}\n\n{desc}"
+    if (sal_from or sal_to) and not currency:
+        # Numbers without a known currency would mislead the ranking: keep them as text only.
+        desc = f"Зарплата: {item.get('salary')}\n\n{desc}"
+        sal_from = sal_to = None
     return VacancyDraft(
         source="remotive",
         external_id=str(item["id"]),
@@ -49,7 +55,7 @@ def item_to_draft(item: dict[str, Any]) -> VacancyDraft | None:
         location=location,
         salary_from=sal_from,
         salary_to=sal_to,
-        currency="USD" if (sal_from or sal_to) and "$" in str(item.get("salary")) else None,
+        currency=currency if (sal_from or sal_to) else None,
         remote=True,
         employment=item.get("job_type"),
         skills=[str(t) for t in item.get("tags") or []][:20],

@@ -1,0 +1,74 @@
+{
+ "data": [
+  {
+   "slug": "forward-deployed-ai-engineer-energy-lennestadt-469857",
+   "company_name": "KnowWay GmbH",
+   "title": "Forward Deployed AI Engineer Energy (m/w/d)",
+   "description": "<p>Wir bei KnowWay entwickeln KI-Agenten für kritische Infrastruktur – Energie, Telekommunikation und öffentlicher Sektor. Überall dort, wo Compliance, Nachvollziehbarkeit und Datensouveränität keine Kompromisse zulassen, automatisieren wir Geschäftsprozesse mit KI.</p>\n<p>Die Rolle</p>\n<p>Wir bauen eine KI-Plattform für die Energiewirtschaft. Unsere Agenten unterstützen Prozesse wie <strong>Lieferantenwechsel, Netzanschluss, Abrechnung und Messstellenbetrieb</strong>.</p>\n<p>Als Forward Deployed AI Engineer übernimmst Du einen Use Case <strong>von Discovery bis Go-Live</strong>. Du arbeitest direkt mit Fachbereichen bei Stadtwerken und Energieversorgern, verstehst ihre Prozesse und übersetzt dieses Wissen in produktive KI-Agenten.</p>\n<p>Dabei verbindest Du <strong>GenAI Engineering mit Kundenarbeit</strong>: Du führst Fachinterviews und Workshops, entwickelst mit Python, LLMs, RAG und Tools funktionierende Lösungen und stellst durch systematische Evaluation sicher, dass sie im Alltag",
+   "remote": true,
+   "url": "https://www.arbeitnow.com/jobs/companies/knowway-gmbh/forward-deployed-ai-engineer-energy-lennestadt-469857",
+   "tags": [
+    "Remote",
+    "Consulting",
+    "Engineering"
+   ],
+   "job_types": [],
+   "location": "Lennestadt",
+   "created_at": 1791403242
+  },
+  {
+   "slug": "full-stack-developer-germany-munich-93633",
+   "company_name": "Bookboost",
+   "title": "Full Stack Developer",
+   "description": "<br><strong>Your mission</strong><p><span style=\"color:rgb(238,238,238);font-family:Inter, '-apple-system', 'system-ui', 'Segoe UI', Roboto, 'Helvetica Neue', 'Open Sans', 'system-ui', '-apple-system', 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';font-size:14px;font-style:normal;font-weight:400;text-transform:none;background-color:rgb(25,25,25);display:inline;\">Bookboost is the Hospitality Engagement Platform that empowers hotels to understand and engage their guests like never before. We unify guest data, automate personalised communication, and deliver experiences that drive revenue, loyalty, and operational excellence.</span><br><br style=\"border:0px solid;margin:0px;color:rgb(238,238,238);font-family:Inter, '-apple-system', 'system-ui', 'Segoe UI', Roboto, 'Helvetica Neue', 'Open Sans', 'system-ui', '-apple-system', 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';font-size",
+   "remote": false,
+   "url": "https://www.arbeitnow.com/jobs/companies/bookboost/full-stack-developer-germany-munich-93633",
+   "tags": [
+    "SaaS",
+    "Hospitlaity tech",
+    "developer",
+    "engineer",
+    "full stack"
+   ],
+   "job_types": [
+    "Experienced",
+    "Permanent",
+    "Full time"
+   ],
+   "location": "Germany - Munich",
+   "created_at": 1791392988
+  },
+  {
+   "slug": "performance-marketing-manager-berlin-6297",
+   "company_name": "YAZIO",
+   "title": "Performance Marketing Manager",
+   "description": "<p style=\"min-height:1.5em\"><strong>HEY THERE!</strong></p><p style=\"min-height:1.5em\">Let's shape the future of nutrition together and make Yazio the most successful nutrition app worldwide!</p><div style=\"min-height:1.2em;margin-top:0;margin-bottom:0\"> </div><p style=\"min-height:1.5em\">As a Performance Marketing Manager, you'll be a key player in our user acquisition team, owning and optimizing high-performing campaigns across digital channels, <strong>including DSPs (e.g., Appier, Liftoff, Unity)</strong>, paid social and search (e.g., Meta, Google Ads, ASA).</p><div style=\"min-height:1.2em;margin-top:0;margin-bottom:0\"> </div><p style=\"min-height:1.5em\">You'll put <strong>AI tools and automation</strong> to work cutting down on repetitive tasks, sharpening your insights and helping campaigns scale more efficiently. You'll collaborate closely with cross-functional teammates in creative, product and analytics to bring best-in-class growth strategies to life - with plenty of support a",
+   "remote": false,
+   "url": "https://www.arbeitnow.com/jobs/companies/yazio/performance-marketing-manager-berlin-6297",
+   "tags": [
+    "Marketing"
+   ],
+   "job_types": [
+    "Full Time"
+   ],
+   "location": "Berlin",
+   "created_at": 1791394814
+  }
+ ],
+ "links": {
+  "first": "https://www.arbeitnow.com/api/job-board-api?page=1",
+  "last": null,
+  "prev": null,
+  "next": "https://www.arbeitnow.com/api/job-board-api?page=2"
+ },
+ "meta": {
+  "current_page": 1,
+  "current_page_url": "https://www.arbeitnow.com/api/job-board-api?page=1",
+  "from": 1,
+  "path": "https://www.arbeitnow.com/api/job-board-api",
+  "per_page": 325,
+  "to": 325,
+  "terms": "This is a free public API for jobs, please do not abuse. I would appreciate linking back to the site. By using the API, you agree to the terms of service present on Arbeitnow.com",
+  "info": "Jobs are updated every hour and order by the `created_at` timestamp. Use `?page=` to paginate. Read more information here: https://www.arbeitnow.com/blog/job-board-api"
+ }
+}

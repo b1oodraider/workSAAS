@@ -22,7 +22,7 @@ import httpx
 from app.core.http import make_async_client
 from app.core.text import html_to_text
 from app.sources import hh_web
-from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, as_dict, safe_map
+from app.sources.base import JobSource, SearchQuery, SourceError, VacancyDraft, as_dict, naive_utc, safe_map
 from app.sources.web import make_fetcher, rate_limiter
 
 log = logging.getLogger(__name__)
@@ -41,7 +41,7 @@ def _parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
     try:
-        return datetime.strptime(value, "%Y-%m-%dT%H:%M:%S%z").replace(tzinfo=None)
+        return naive_utc(datetime.strptime(value, "%Y-%m-%dT%H:%M:%S%z"))
     except ValueError:
         return None
 
@@ -146,7 +146,7 @@ class HHSource(JobSource):
         return make_async_client(use_proxy=self.cfg.use_proxy, timeout=30.0, headers=headers)
 
     async def _get(self, client: httpx.AsyncClient, path: str, params: Any = None) -> dict[str, Any]:
-        await rate_limiter.wait("api.hh.ru", float(self.cfg.options.get("api_min_interval", 0.5)))
+        await rate_limiter.wait("api.hh.ru", self.opt_float("api_min_interval", 0.5, floor=0.2))
         try:
             resp = await client.get(API + path, params=params)
         except httpx.HTTPError as exc:
@@ -155,6 +155,10 @@ class HHSource(JobSource):
             return {}
         if resp.status_code in (401, 403):
             raise ApiDenied(f"API hh.ru отказал в доступе ({resp.status_code})")
+        if resp.status_code == 400 and "user_agent" in resp.text.lower():
+            # hh.ru blacklists User-Agents it does not like ("bad_user_agent"): same as a refusal.
+            raise ApiDenied("API hh.ru отклонил User-Agent — задайте [sources.hh.options] user_agent "
+                            "вида \"AppName/1.0 (your@email)\"; пока используется разбор сайта")
         if resp.status_code >= 400:
             raise SourceError(f"hh.ru ответил {resp.status_code}: {resp.text[:300]}")
         try:
@@ -209,7 +213,7 @@ class HHSource(JobSource):
         return make_fetcher(
             self.cfg.options.get("fetcher", "auto"),
             use_proxy=self.cfg.use_proxy,
-            min_interval=float(self.cfg.options.get("min_interval", 2.5)),
+            min_interval=self.opt_float("min_interval", 2.5, floor=1.0),
         )
 
     def _web_params(self, query: SearchQuery, page: int, per_page: int) -> dict[str, Any]:

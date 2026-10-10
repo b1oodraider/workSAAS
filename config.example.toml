@@ -8,7 +8,11 @@ default_monthly_budget_usd = 10.0
 # Прокси для провайдеров/источников с use_proxy = true. HTTP(S)-прокси; про SOCKS — см. README.
 # proxy_url = "http://user:pass@host:port"
 timezone = "Europe/Moscow"     # в каком поясе показывать и вводить даты
-session_https_only = false      # true, если сайт открыт по HTTPS (VPS за Caddy/nginx)
+session_https_only = false      # cookie только по HTTPS; включается само, если telegram.public_url начинается с https://
+# Адрес обратного прокси (Caddy/nginx), которому верим в X-Forwarded-For — иначе защита входа видит
+# всех пользователей с одного IP. Без Docker — 127.0.0.1; в Docker — шлюз сети (обычно 172.17.0.1 или
+# 172.18.0.1: `docker network inspect`). "*" — только если порт приложения недоступен снаружи.
+trusted_proxies = "127.0.0.1"
 max_upload_mb = 10              # максимальный размер файла резюме
 
 # ---------------------------------------------------------------------------
@@ -17,7 +21,10 @@ max_upload_mb = 10              # максимальный размер файл
 # ---------------------------------------------------------------------------
 [telegram]
 enabled = true                  # false — если бот запущен отдельно командой `worksaas bot`
-public_url = "http://127.0.0.1:8000"   # адрес веб-интерфейса для ссылок в сообщениях
+# Адрес веб-интерфейса для ссылок в сообщениях — ровно тот, что видит браузер (за HTTPS: "https://jobs.example.com").
+# По нему cookie становятся Secure и проверяется, что формы отправлены с этого сайта; nginx перед приложением
+# должен передавать `proxy_set_header Host $host;`, иначе POST-запросы получат 403.
+public_url = "http://127.0.0.1:8000"
 notify_min_score = 75           # порог «подходящей» вакансии по умолчанию (каждый может изменить свой)
 digest_interval_s = 300         # как часто проверять новые совпадения и напоминания
 use_proxy = false
@@ -99,6 +106,12 @@ provider = "anthropic"
 model = "claude-opus-5-5"
 effort = "low"
 
+[llm.routes.match_quick]      # быстрая первичная оценка каждой найденной вакансии — самая массовая
+provider = "anthropic"
+model = "claude-opus-5-5"
+effort = "low"
+# max_tokens = 400            # для моделей без «размышлений» (GigaChat3-10B); для gpt-oss оставить 2000
+
 [llm.routes.resume_profile]
 provider = "anthropic"
 model = "claude-opus-5-5"
@@ -140,11 +153,50 @@ effort = "low"
 # input = 0.27
 # output = 1.10
 
+# Отбор вакансий по смыслу (эмбеддинги): находит то, что не ловит отбор по словам, — вакансии на
+# другом языке, синонимы, смежные названия. Нужен openai_compat-провайдер с /embeddings.
+# Cloud.ru, BAAI/bge-m3 — 0,61 ₽ за 1 млн токенов; каждый текст оплачивается один раз на всех.
+# Проверка и подсказка для low/high: worksaas doctor --llm (покажет сходство двух близких фраз).
+# [llm.embeddings]
+# enabled = true
+# provider = "cloudru"
+# model = "BAAI/bge-m3"
+# weight = 0.5        # доля смысла в балле отбора, остальное — слова
+# low = 0.35          # косинус ниже low — 0 баллов, выше high — 100 (для bge-m3 — оценка, не замер)
+# high = 0.75
+# max_chars = 6000    # текст обрезается до стольких символов
+# batch_size = 32     # текстов в одном запросе
+# max_per_run = 2000  # не больше стольких вакансий за подбор (лучшие по словам)
+# keep_days = 60      # векторы (и резюме тоже) удаляются через столько дней после сохранения
+# Цена обязательна, иначе расход не попадёт в бюджеты (worksaas doctor предупредит). Единицы — те же,
+# что у остальных цен и лимитов (рубли или доллары, см. docs/LLM_PLANS.md «Учёт бюджета»).
+# [llm.prices."BAAI/bge-m3"]
+# input = 0.61
+# output = 0
+
+# Кандидаты для писем (тест: worksaas compare-letters <логин>), цены Cloud.ru в рублях с НДС:
+# [llm.prices."GigaChat/GigaChat-3-Pro"]
+# input = 73.03
+# output = 176.39
+# [llm.prices."ai-sage/GigaChat3.5-432B-A28B-Reasoning"]
+# input = 96.22
+# output = 288.6
+# [llm.prices."moonshotai/Kimi-K2.6"]
+# input = 175.68
+# output = 725.9
+# [llm.prices."deepseek-ai/DeepSeek-V4-Pro"]
+# input = 183
+# output = 732
+# [llm.prices."zai-org/GLM-5.1"]
+# input = 198.86
+# output = 829.6
+
 # ---------------------------------------------------------------------------
 # Источники вакансий
 # ---------------------------------------------------------------------------
 # Источник без секции в этом файле использует настройки по умолчанию
-# (hh, habr, trudvsem, remotive, remoteok, manual — включены; superjob, telegram, rss — нет).
+# (включено большинство; выключены по умолчанию: superjob, rss, getmatch, avito_jobs, adzuna, linkedin —
+# полный список и причины — README «Источники вакансий»).
 
 [sources.hh]
 enabled = true
@@ -174,18 +226,67 @@ enabled = true
 [sources.trudvsem.options]
 # region = "7700000000000"                  # код региона; пусто — вся Россия
 
+[sources.rabota_ru]                         # Работа.ру: разбор страниц (регион выбирает сайт, по умолчанию Москва)
+enabled = true
+[sources.geekjob]                           # GeekJob: IT
+enabled = true
+[sources.yandex_jobs]                       # вакансии Яндекса (официальный JSON сайта)
+enabled = true
+[sources.getmatch]                          # getmatch.ru: IT с зарплатами. Внутренний JSON сайта, robots.txt
+enabled = false                             # запрещает /api/ — включайте, если это приемлемо
+[sources.remote_job_ru]                     # remote-job.ru: удалёнка, много перепостов с других сайтов
+enabled = true
+[sources.djinni]                            # Djinni: IT, в т.ч. удалёнка (RSS)
+enabled = true
+[sources.avito_jobs]                        # Авито Работа: сильная защита от ботов (HTTP 439), для IT мало пользы,
+enabled = false                             # правила сайта автоматический сбор не разрешают
+
 [sources.telegram]                          # ЧТЕНИЕ публичных каналов с вакансиями (через t.me/s/…); бот — секция [telegram] выше
-enabled = false
+enabled = true
 [sources.telegram.options]
-channels = [
-  # "имя_канала_без_собаки",
-]
+# Без строки channels используется проверенный список из 20 IT-каналов (app/sources/telegram_channels.py).
+# channels = ["pydevjob", "remocate"]       # свой список; channels = [] — выключить
 pages = 2
 
+# --- За рубежом ---------------------------------------------------------------
 [sources.remotive]                          # удалёнка за рубежом
 enabled = true
-
 [sources.remoteok]
+enabled = true
+[sources.himalayas]                         # удалёнка, до 20 вакансий на запрос
+enabled = true
+[sources.jobicy]
+enabled = true
+[sources.weworkremotely]                    # We Work Remotely (RSS по категориям)
+enabled = true
+[sources.workingnomads]
+enabled = true
+[sources.arbeitnow]                         # Германия и ЕС
+enabled = true
+[sources.themuse]                           # компании США и мира
+enabled = true
+[sources.themuse.options]
+# categories = ["Software Engineering", "Data and Analytics"]
+[sources.hn_hiring]                         # ежемесячный тред Hacker News «Who is hiring» (посты людей)
+enabled = true
+[sources.adzuna]                            # агрегатор UK/DE/NL/PL…: бесплатный ключ https://developer.adzuna.com
+enabled = false                             # ADZUNA_APP_ID и ADZUNA_APP_KEY в .env
+[sources.adzuna.options]
+countries = ["gb", "de", "nl", "pl"]
+[sources.linkedin]                          # вакансии LinkedIn без входа (гостевой поиск). Посты — нет (нужен вход):
+enabled = false                             # их — вставкой текста или ссылкой. Правила LinkedIn автоматический сбор
+[sources.linkedin.options]                  # запрещают, возможна блокировка IP — включайте осознанно
+locations = ["Worldwide"]                   # или ["Germany", "Netherlands", "Poland"]
+
+# --- Карьерные страницы компаний (ATS) --------------------------------------
+# Без строки companies — проверенный список компаний в коде; companies = [] — выключить.
+[sources.greenhouse]
+enabled = true
+# [sources.greenhouse.options]
+# companies = ["gitlab", "elastic", "datadog"]
+[sources.lever]
+enabled = true
+[sources.ashby]
 enabled = true
 
 [sources.rss]
@@ -202,7 +303,9 @@ enabled = true
 # ---------------------------------------------------------------------------
 [matching]
 top_n = 15            # сколько лучших по префильтру вакансий за запуск оценивает LLM
-prefilter_min = 10.0  # ниже этого балла (0..100) в LLM не отправляем
+prefilter_min = 20.0  # ниже этого балла (0..100) в LLM не отправляем
+quick_match = true    # сначала дешёвая быстрая оценка (match_quick), подробная — только лучшим
+full_match_min = 60   # с какой быстрой оценки делать подробный разбор (match)
 fetch_limit = 50      # вакансий на один запрос в одном источнике
 
 [jobs]
@@ -219,6 +322,8 @@ enabled = true                  # false — выключить автооткл�
 hard_daily_max = 30             # больше этого в сутки не выставить никому
 min_interval_floor_s = 60       # и не чаще одного отклика в столько секунд
 max_consecutive_failures = 3    # после стольких ошибок подряд — пауза
+auto_min_prefilter = 40.0       # режим «auto»: нужен ещё и балл префильтра (не только оценка ИИ)
+status_sync_hours = 6           # раз в столько часов читать «Отклики» на hh.ru (статусы в трекер); 0 — выкл.
 headless = true                 # false — видеть окно браузера (отладка на ноутбуке)
 browser_executable = ""         # свой Chrome/Chromium вместо скачанного Playwright
 use_proxy = false               # ходить на hh.ru через proxy_url (сервер за границей)
@@ -235,3 +340,4 @@ use_proxy = false               # ходить на hh.ru через proxy_url (
 # submit = '[data-qa="vacancy-response-submit-popup"]'
 # success = '[data-qa="vacancy-response-success-standard-notification"], [data-qa="vacancy-response-link-view-topic"]'
 # login_form = '[data-qa="account-login-form"], [data-qa="login"]'
+# negotiations_item = '[data-qa*="negotiations-item"]'   # карточка в «Откликах» (синхронизация статусов)

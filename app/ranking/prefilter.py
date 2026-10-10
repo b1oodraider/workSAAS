@@ -1,7 +1,7 @@
 """Cheap, LLM-free relevance score (0..100) used to pick which vacancies go to the LLM.
 
-Implements the Ranker interface; an embeddings-based ranker could replace it
-without touching the search pipeline.
+Implements the Ranker interface. Meaning similarity (embeddings) is added on top of this score
+by the search service (see app/ranking/semantic.py), not instead of it.
 """
 
 from __future__ import annotations
@@ -27,6 +27,8 @@ class RankProfile:
     secondary_skills: list[str] = field(default_factory=list)
     roles: list[str] = field(default_factory=list)
     negative_keywords: list[str] = field(default_factory=list)
+    # Related roles with mostly the same skills ("Python backend" -> "Data engineer").
+    adjacent_roles: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -37,6 +39,7 @@ class RankInput:
     salary_to: int | None = None
     remote: bool | None = None
     currency: str | None = None
+    company: str | None = None
 
 
 @dataclass
@@ -71,8 +74,13 @@ def _contains_stem(haystack: str, phrase: str) -> bool:
     return f" {needle} " in haystack
 
 
+# Share of the title score an adjacent role earns: skills decide whether it gets to the LLM.
+ADJACENT_TITLE_CREDIT = 0.6
+
 # Currencies the salary filter understands as rubles (the filter value is in rubles).
-RUBLE_CODES = {None, "", "RUR", "RUB"}
+# Only explicit rubles: a missing currency is often a foreign or yearly amount ("3000-5000 USD"
+# parsed without its code), and excluding a good vacancy is worse than letting one through.
+RUBLE_CODES = {"RUR", "RUB"}
 
 
 class KeywordRanker:
@@ -83,6 +91,12 @@ class KeywordRanker:
         for word in [*filters.exclude_words, *profile.negative_keywords]:
             if _contains_stem(body, word):
                 return RankResult(0.0, [f"стоп-слово «{word}»"], excluded=True)
+        for word in filters.exclude_title_words:
+            if _contains_stem(title, word):
+                return RankResult(0.0, [f"стоп-слово в названии «{word}»"], excluded=True)
+        company = normalize(vacancy.company or "").strip()
+        if company and any(normalize(c).strip() == company for c in filters.exclude_companies):
+            return RankResult(0.0, [f"компания «{vacancy.company}» исключена"], excluded=True)
         if filters.remote_only and vacancy.remote is False:
             return RankResult(0.0, ["не удалёнка"], excluded=True)
         # Salary filter is in rubles: never compare against dollars/euros/tenge.
@@ -104,6 +118,10 @@ class KeywordRanker:
                     role_hit = role
                     break
         title_part = 1.0 if role_hit else 0.0
+        if role_hit is None:
+            adjacent = next((r for r in profile.adjacent_roles if _contains(title, r)), None)
+            if adjacent:
+                role_hit, title_part = f"{adjacent} (смежная)", ADJACENT_TITLE_CREDIT
 
         score = round(70 * skill_part + 30 * title_part, 1)
         reasons = []

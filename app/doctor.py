@@ -62,7 +62,7 @@ async def check_sources() -> list[Check]:
         cfg = source_config(name)
         if not cfg.enabled or name not in SOURCE_PROBES:
             continue
-        if name == "telegram" and not cfg.options.get("channels"):
+        if name == "telegram" and cfg.options.get("channels") in ([], (), ""):  # default channels otherwise
             continue
         headers = {"X-Api-App-Id": os.environ.get("SUPERJOB_API_KEY", "")} if name == "superjob" else None
         for url in SOURCE_PROBES[name]:
@@ -77,6 +77,13 @@ def check_config() -> list[Check]:
     checks = [Check("WS_SECRET_KEY задан", has_secret,
                     "" if has_secret else "без него сессии сбрасываются при перезапуске")]
     used = {t.provider for r in s.llm.routes.values() for t in r.targets()}
+    if s.llm.embeddings.enabled:
+        used.add(s.llm.embeddings.provider)
+        from app.llm.pricing import price_for
+
+        priced = price_for(s.llm.embeddings.model) is not None
+        checks.append(Check(f"цена эмбеддингов {s.llm.embeddings.model}", priced,
+                            "" if priced else "нет [llm.prices] — расход не попадёт в бюджет пользователей"))
     for name in sorted(used):
         cfg = s.llm.providers.get(name)
         if cfg is None:
@@ -133,6 +140,20 @@ async def check_llm() -> list[Check]:
                                     f"ответ: {resp.data}, токены {resp.usage.input_tokens}/{resp.usage.output_tokens}"))
             except LLMError as exc:
                 checks.append(Check(f"LLM {t.provider} / {t.model}", False, str(exc)[:300]))
+    emb = s.llm.embeddings
+    if emb.enabled:
+        name = f"эмбеддинги {emb.provider} / {emb.model}"
+        try:
+            provider, _ = gw.embedding_provider()
+            resp = await provider.embed(emb.model, ["Python-разработчик", "Python developer"])
+            from app.llm.vectors import unit
+            from app.ranking.semantic import cosine
+
+            a, b = (unit(v) for v in resp.vectors)
+            checks.append(Check(name, True, f"размер вектора {len(a)}, сходство «Python-разработчик» и "
+                                            f"«Python developer» {cosine(a, b):.2f}, токены {resp.usage.input_tokens}"))
+        except LLMError as exc:
+            checks.append(Check(name, False, str(exc)[:300]))
     return checks
 
 
