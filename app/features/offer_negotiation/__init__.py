@@ -20,7 +20,7 @@ FEATURE = register(
         title="Разбор оффера",
         description="Оценка условий, аргументы для торга из вашего опыта и готовый текст ответа.",
         subject="resume_vacancy",
-        task=LLMTask(name="offer_negotiation", version="2", output=OfferReview,
+        task=LLMTask(name="offer_negotiation", version="3", output=OfferReview,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         params_model=Params,
         employer_facing=True,

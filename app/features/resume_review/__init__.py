@@ -17,7 +17,7 @@ FEATURE = register(
         title="Оценка резюме",
         description="Разбор резюме глазами рекрутера: оценка, проблемы с исправлениями, ключевые слова.",
         subject="resume",
-        task=LLMTask(name="resume_review", version="2", output=ResumeReview,
+        task=LLMTask(name="resume_review", version="3", output=ResumeReview,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         params_model=ResumeReviewParams,
         score_field="overall_score",

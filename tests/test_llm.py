@@ -354,3 +354,30 @@ async def test_anthropic_api_error_keeps_sdk_message_out_of_the_message():
     with pytest.raises(LLMUnavailable) as info:
         await provider.generate(_req())
     assert "secret" not in str(info.value) and "secret network detail" in info.value.detail
+
+
+def test_current_month_is_local_and_russian():
+    from datetime import datetime, timezone
+
+    from app.core.text import current_month
+
+    late_utc = datetime(2026, 10, 31, 22, 30, tzinfo=timezone.utc)  # already November in Moscow
+    assert current_month("Europe/Moscow", late_utc) == "ноябрь 2026"
+    assert current_month("UTC", late_utc) == "октябрь 2026"
+    assert current_month("Not/AZone", late_utc) == "октябрь 2026"  # bad config falls back to UTC
+
+
+async def test_every_prompt_knows_the_current_month(user_id):
+    """BUG-001: without the date models call 2026 resume dates 'future' and suggest inventing others."""
+    from app.core.text import current_month
+    from app.features import FEATURES
+    from app.llm import get_gateway
+    from app.llm.providers.fake import FakeProvider
+
+    month = current_month(get_gateway().settings.timezone)
+    feature = FEATURES["resume_review"]
+    params = feature.params_model.model_validate({}) if not feature.params_model.model_fields else None
+    variables = {"params": params or feature.params_model.model_construct(), "resume": "Jun 2026 – Present",
+                 "preferences": "", "vacancy": ""}
+    await get_gateway().run(feature.task, variables, user_id=user_id, use_cache=False)
+    assert f"Текущий месяц: {month}" in FakeProvider.calls[-1].system

@@ -40,7 +40,7 @@ FEATURE = register(
         title="Сопроводительное письмо",
         description="Персональное письмо под вакансию на основе резюме (и анализа соответствия, если он есть).",
         subject="resume_vacancy",
-        task=LLMTask(name="cover_letter", version="5", output=CoverLetter,
+        task=LLMTask(name="cover_letter", version="6", output=CoverLetter,
                      template_dir=feature_dir(__file__), max_tokens=8000),
         params_model=CoverLetterParams,
         context_builder=_context,

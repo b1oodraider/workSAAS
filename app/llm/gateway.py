@@ -17,7 +17,7 @@ from sqlalchemy import delete, func, select
 
 from app.core.config import EmbeddingSettings, LLMRoute, LLMTarget, Settings, get_settings
 from app.core.db import month_start, session_scope, utcnow
-from app.core.text import stable_hash
+from app.core.text import current_month, stable_hash
 from app.llm.base import (
     BudgetExceeded,
     EmbeddingProvider,
@@ -109,7 +109,9 @@ class LLMGateway:
     ) -> TaskResult[T]:
         """``route`` overrides the configured one (model comparison runs the same task elsewhere)."""
         route = route or self.settings.llm.route_for(task.name)
-        variables = {"language": self.settings.output_language, **variables}
+        # Models think "today" is their training cutoff: without this, 2026 resume dates look like the future.
+        variables = {"language": self.settings.output_language,
+                     "current_month": current_month(self.settings.timezone), **variables}
         system, user = task.render(variables)
         use_cache = use_cache and self.settings.llm.cache_enabled
         targets = route.targets()

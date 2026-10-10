@@ -13,7 +13,7 @@ FEATURE = register(
         # Resume lives in the system prompt so bulk triage reuses the prompt cache.
         # 2000: reasoning models (gpt-oss) spend "thinking" tokens from this budget too, and a
         # truncated answer is paid for anyway. Non-reasoning models: lower it in the route.
-        task=LLMTask(name="match_quick", version="4", output=QuickMatch,
+        task=LLMTask(name="match_quick", version="5", output=QuickMatch,
                      template_dir=feature_dir(__file__), max_tokens=2000, cache_system=True),
         score_field="score",
         hidden=True,  # runs inside the search pipeline
